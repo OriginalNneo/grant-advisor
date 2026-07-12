@@ -1,0 +1,2374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Grant Advisor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --background: #F5F4F1;
+    --foreground: #18181B;
+    --card: #FFFFFF;
+    --border: rgba(0,0,0,0.08);
+    --muted: #F0EFF0;
+    --muted-foreground: #71717A;
+    --accent: #6366F1;
+    --accent-2: #8B5CF6;
+    --radius-sm: 12px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --shadow-card: 0 4px 24px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.05);
+    --shadow-float: 0 12px 40px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.08);
+  }
+  /* Deliberately not pulling Plus Jakarta Sans from Google Fonts here -- this
+     project's whole premise is "nothing leaves the machine"; a system stack
+     gets close enough visually without a network call on every page load. */
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+  }
+  button, input, textarea { font-family: inherit; }
+  /* Pressed-state feedback: every button in the app (nav, list items, tabs,
+     toolbar actions) is a real <button>, so one rule covers all of them. */
+  button { transition: transform 0.08s ease, filter 0.08s ease; }
+  button:active:not(:disabled) { transform: scale(0.96); filter: brightness(0.97); }
+  .pressable { transition: transform 0.08s ease; }
+  .pressable:active { transform: scale(0.97); }
+  .doc-editable mark { transition: transform 0.08s ease; }
+  .doc-editable mark:active { transform: scale(0.96); }
+  .app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 208px; flex-shrink: 0;
+    background: linear-gradient(160deg, #0D1421 0%, #1C1148 55%, #0D1E35 100%);
+    display: flex; flex-direction: column; position: relative; overflow: hidden;
+    transition: width 0.2s ease;
+  }
+  #sidebar.collapsed { width: 52px; }
+  #sidebar .glow { position: absolute; border-radius: 50%; pointer-events: none; }
+  #sidebar .glow.a { top: -60px; right: -60px; width: 220px; height: 220px; background: radial-gradient(circle, rgba(129,140,248,0.18) 0%, transparent 70%); }
+  #sidebar .glow.b { bottom: 40px; left: -80px; width: 200px; height: 200px; background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%); }
+  .brand-row { padding: 20px 16px 16px; position: relative; display: flex; align-items: center; gap: 10px; }
+  #sidebar.collapsed .brand-row { padding: 16px 10px 14px; justify-content: center; }
+  .hamburger-btn {
+    width: 32px; height: 32px; border-radius: 10px; border: none; background: rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+  }
+  .hamburger-btn:hover { background: rgba(255,255,255,0.18); }
+  .brand-text { min-width: 0; overflow: hidden; white-space: nowrap; }
+  .brand-text .name { color: #fff; font-weight: 800; font-size: 13px; letter-spacing: -0.2px; }
+  .brand-text .tag { color: rgba(255,255,255,0.38); font-size: 10px; margin-top: 3px; font-weight: 500; }
+  .nav-area { flex: 1; padding: 8px 12px; overflow-y: auto; position: relative; }
+  .nav-group-label { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.25); padding: 0 4px; margin-bottom: 8px; }
+  .nav-group { margin-bottom: 22px; }
+  .nav-btn {
+    width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 14px;
+    border: 1px solid transparent; background: transparent; color: rgba(255,255,255,0.5);
+    font-weight: 400; font-size: 12px; cursor: pointer; text-align: left; margin-bottom: 3px;
+  }
+  .nav-btn.active {
+    border: 1px solid rgba(129,140,248,0.35);
+    background: linear-gradient(135deg, rgba(129,140,248,0.28) 0%, rgba(99,102,241,0.12) 100%);
+    color: #fff; font-weight: 600;
+  }
+  .nav-btn svg { flex-shrink: 0; opacity: 0.7; }
+  .nav-btn.active svg { opacity: 1; }
+  .nav-btn .label { flex: 1; line-height: 1.35; }
+  .nav-badge { font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.15); color: #fff; border-radius: 999px; padding: 2px 7px; flex-shrink: 0; }
+  .nav-badge.alert { background: #EF4444; }
+  .collapsed-nav { flex: 1; display: none; flex-direction: column; align-items: center; padding: 8px 0; gap: 6px; }
+  #sidebar.collapsed .nav-area { display: none; }
+  #sidebar.collapsed .collapsed-nav { display: flex; }
+  .collapsed-btn { width: 36px; height: 36px; border-radius: 10px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+  .collapsed-btn.active { background: rgba(129,140,248,0.28); }
+  .collapsed-btn svg { color: rgba(255,255,255,0.45); }
+  .collapsed-btn.active svg { color: #fff; }
+
+  /* ── Main content ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--background); }
+  .view { display: none; flex: 1; overflow: hidden; }
+  .view.active { display: flex; }
+  .view-scroll { flex: 1; overflow-y: auto; padding: 36px; }
+  .page-title { font-size: 22px; font-weight: 900; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .page-sub { font-size: 13px; color: var(--muted-foreground); margin: 0 0 28px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+  .pill { font-size: 11px; padding: 4px 12px; border-radius: 999px; color: var(--muted-foreground); background: var(--muted); font-weight: 600; border: 1px solid var(--border); }
+
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: var(--radius-lg); padding: 60px 32px; text-align: center;
+    cursor: pointer; background: var(--card); max-width: 560px; position: relative; overflow: hidden;
+  }
+  .dropzone.drag { border-color: var(--accent); }
+  .dropzone::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #6366F1, #A78BFA, #06B6D4); }
+  .dz-icon { width: 60px; height: 60px; border-radius: 18px; background: linear-gradient(135deg, #EEF2FF, #E0E7FF); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; box-shadow: 0 8px 24px rgba(99,102,241,0.15); color: var(--accent); }
+  .dz-title { font-size: 15px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.2px; }
+  .dz-hint { font-size: 12px; color: var(--muted-foreground); margin: 0 0 18px; }
+  .dz-formats { display: flex; justify-content: center; gap: 7px; flex-wrap: wrap; }
+
+  .status-card { max-width: 560px; padding: 32px; text-align: center; }
+
+  /* ── Upload Grant: bigger, centered dropzone (scoped to this view only) ── */
+  #view-upload-grant .view-scroll { display: flex; flex-direction: column; align-items: center; }
+  #view-upload-grant .page-title,
+  #view-upload-grant .page-sub { width: 100%; max-width: 720px; text-align: center; }
+  /* These wrapper divs are the actual flex items here -- giving THEM a definite
+     width (not just the .dropzone/.status-card nested inside) is what lets the
+     100% widths below resolve against something other than shrink-to-fit content,
+     which is why the box was rendering narrow before this fix. */
+  #view-upload-grant #grantUploadIdle,
+  #view-upload-grant #grantUploadBusy,
+  #view-upload-grant #grantUploadDone,
+  #view-upload-grant #grantUploadError { width: 100%; max-width: 720px; }
+  #view-upload-grant .dropzone { max-width: 720px; width: 100%; padding: 88px 40px; box-sizing: border-box; }
+  #view-upload-grant .dropzone .dz-icon { width: 76px; height: 76px; border-radius: 22px; }
+  #view-upload-grant .dropzone .dz-title { font-size: 18px; }
+  #view-upload-grant .dropzone .dz-hint { font-size: 13px; }
+  #view-upload-grant .status-card { max-width: 720px; width: 100%; padding: 44px; box-sizing: border-box; }
+  .status-card .dz-icon { width: 52px; height: 52px; border-radius: 16px; margin-bottom: 14px; }
+  .status-card.success { background: #F0FDF4; border-color: #BBF7D0; }
+  .status-card.success .dz-icon { background: #DCFCE7; color: #16A34A; }
+  .status-card.error { background: #FFF1F1; border-color: #FECACA; }
+  .status-card.error .dz-icon { background: #FEE2E2; color: #EF4444; }
+  .progress-track { height: 6px; background: var(--muted); border-radius: 999px; overflow: hidden; max-width: 280px; margin: 0 auto; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #6366F1, #A78BFA); border-radius: 999px; transition: width 0.3s; }
+  /* Indeterminate variant: a sliding highlight, not a fabricated percentage --
+     these calls are single-shot local-model requests with no real progress
+     signal, so this only ever communicates "still working," never "% done". */
+  .progress-track.indeterminate { position: relative; }
+  .progress-track.indeterminate .progress-fill { position: absolute; top: 0; width: 40%; animation: progress-slide 1.1s ease-in-out infinite; }
+  @keyframes progress-slide {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 10px 20px; border-radius: 999px; border: none; cursor: pointer; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn-primary { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; box-shadow: 0 6px 20px rgba(99,102,241,0.3); }
+  .btn-primary:disabled { background: var(--muted); color: var(--muted-foreground); box-shadow: none; cursor: default; }
+  .btn-success { background: linear-gradient(135deg, #22C55E, #16A34A); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--foreground); border: 1.5px solid var(--border); }
+  .btn-sm { font-size: 11px; padding: 6px 14px; font-weight: 600; }
+
+  /* ── View Grants ── */
+  #view-view-grants { display: none; }
+  #view-view-grants.active { display: flex; }
+  .grants-list-panel { width: 288px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; overflow: hidden; }
+  .grants-list-head { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 800; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.1em; }
+  .grants-list-body { flex: 1; overflow-y: auto; padding: 10px; }
+  .grant-item { width: 100%; text-align: left; padding: 13px 14px; border-radius: var(--radius-md); border: 1.5px solid transparent; background: transparent; cursor: pointer; margin-bottom: 6px; display: block; }
+  .grant-item.selected { border-color: #6366F1; background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%); }
+  .grant-item-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+  .grant-item-icon { width: 32px; height: 32px; border-radius: 10px; background: var(--muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted-foreground); }
+  .grant-item.selected .grant-item-icon { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+  .grant-item-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grant-item-org { font-size: 10px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grant-item-meta { display: flex; gap: 6px; align-items: center; font-size: 10px; color: var(--muted-foreground); }
+  .grant-item-meta .b { padding: 2px 8px; border-radius: 999px; background: var(--muted); font-weight: 600; }
+  .grant-item.selected .grant-item-meta .b { background: rgba(99,102,241,0.12); color: #6366F1; }
+  .grant-item-checkbox { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .grant-item-checkbox.checked { background: #6366F1; border-color: #6366F1; color: #fff; }
+
+  .badge-outdated { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: #FFF3E0; color: #B45309; border: 1px solid #FED7AA; }
+
+  .bulk-action-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--muted); }
+  .badge-outdated-btn { background: #FFF3E0; color: #B45309; border: 1px solid #FED7AA; }
+  .btn-danger { background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
+
+  .archive-section { border-top: 1px solid var(--border); flex-shrink: 0; max-height: 40%; display: flex; flex-direction: column; overflow: hidden; }
+  .archive-header { width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: none; border: none; cursor: pointer; font-size: 11px; font-weight: 700; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.08em; }
+  .archive-header .ic { transition: transform 0.15s; }
+  .archive-header.open .ic { transform: rotate(90deg); }
+  .archive-body { flex: 1; overflow-y: auto; }
+  .archive-item { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 4px; }
+  .archive-item-name { font-size: 12px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .grant-viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .grant-viewer-head { padding: 14px 22px; border-bottom: 1px solid var(--border); background: var(--card); display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .grant-viewer-title { font-size: 15px; font-weight: 800; margin: 0 0 2px; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grant-viewer-sub { font-size: 11px; color: var(--muted-foreground); margin: 0; }
+  .ask-toggle { display: flex; align-items: center; gap: 7px; padding: 8px 16px; background: var(--muted); color: var(--foreground); border: none; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .ask-toggle.open { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; box-shadow: 0 8px 32px rgba(99,102,241,0.19); }
+  .grant-viewer-body { flex: 1; display: flex; overflow: hidden; }
+  .grant-md { flex: 1; overflow-y: auto; padding: 28px 32px; font-size: 13px; line-height: 1.7; }
+  .grant-md h1 { font-size: 18px; font-weight: 800; margin: 0 0 2px; }
+  .grant-md h2 { font-size: 13px; font-weight: 700; margin: 20px 0 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  .grant-md p { font-size: 12px; opacity: 0.82; margin: 0 0 3px; }
+  .grant-md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+  .grant-md .li { display: flex; gap: 8px; margin-bottom: 3px; font-size: 12px; opacity: 0.82; }
+  .grant-md .li .bullet { color: var(--muted-foreground); font-size: 9px; margin-top: 5px; flex-shrink: 0; }
+  .grant-md table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
+  .grant-md th { text-align: left; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-weight: 600; }
+  .grant-md td { padding: 7px 12px; border-bottom: 1px solid var(--border); opacity: 0.8; }
+  .grant-md-empty { padding: 40px; text-align: center; color: var(--muted-foreground); font-size: 13px; }
+
+  .ask-panel { width: 316px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; overflow: hidden; }
+  .ask-panel-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .ask-panel-head .title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+  .ask-close { background: none; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 8px; display: flex; }
+  .ask-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .ask-suggestions { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
+  .ask-suggestion { padding: 8px 12px; background: var(--muted); border: 1.5px solid var(--border); border-radius: var(--radius-md); font-size: 11px; cursor: pointer; text-align: left; font-weight: 500; }
+  .qa-q { align-self: flex-end; max-width: 88%; background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; border-radius: 14px 14px 3px 14px; padding: 9px 13px; font-size: 12px; }
+  .qa-a { align-self: flex-start; max-width: 96%; background: var(--muted); border-radius: 3px 14px 14px 14px; padding: 9px 13px; font-size: 12px; line-height: 1.6; }
+  .ask-input-row { padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+  .ask-input { flex: 1; padding: 9px 13px; background: var(--muted); border: 1.5px solid var(--border); border-radius: 999px; font-size: 12px; outline: none; }
+  .ask-send { width: 36px; height: 36px; border-radius: 50%; background: var(--muted); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted-foreground); }
+  .ask-send.ready { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+
+  /* ── Vet proposal ── */
+  .tab-row { display: flex; gap: 8px; margin-bottom: 20px; }
+  .tab-btn { padding: 8px 16px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--card); font-size: 12px; font-weight: 700; color: var(--muted-foreground); cursor: pointer; }
+  .tab-btn.active { border-color: #6366F1; background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%); color: #6366F1; }
+  .grant-select-list { display: flex; flex-direction: column; gap: 7px; }
+  .grant-select-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-md); border: 1.5px solid var(--border); background: transparent; cursor: pointer; text-align: left; width: 100%; font-size: 12px; }
+  .grant-select-item.selected { border-color: #6366F1; background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%); color: #6366F1; font-weight: 700; }
+  .grant-select-item .name { flex: 1; }
+  .grant-select-item .org { font-size: 10px; color: var(--muted-foreground); }
+
+  .audit-topbar { padding: 11px 24px; border-bottom: 1px solid var(--border); background: var(--card); display: flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 12px; }
+  .audit-topbar .counts { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .count-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .audit-content { flex: 1; display: flex; overflow: hidden; }
+  .audit-body { flex: 1; overflow-y: auto; padding: 32px 28px; }
+  .audit-doc { max-width: 720px; margin: 0 auto; }
+  .audit-body-row { display: flex; align-items: flex-start; gap: 24px; max-width: 960px; margin: 0 auto; }
+  .audit-body-row .audit-doc { flex: 1; min-width: 0; margin: 0; }
+
+  /* Category-correlation panel: which of the grants db's focus_areas tags
+     this proposal reads as belonging to, top-right beside the document. */
+  .category-panel { width: 200px; flex-shrink: 0; position: sticky; top: 0; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+  .category-panel-head { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-foreground); margin-bottom: 12px; }
+  .category-item { margin-bottom: 14px; }
+  .category-item:last-child { margin-bottom: 0; }
+  .category-item .cat-name { font-size: 12px; font-weight: 700; margin-bottom: 5px; }
+  .category-item .cat-bar-track { height: 5px; background: var(--muted); border-radius: 999px; overflow: hidden; }
+  .category-item .cat-bar-fill { height: 100%; background: linear-gradient(90deg, #6366F1, #A78BFA); border-radius: 999px; }
+
+  /* Grammarly-style floating callout: positioned in JS from the clicked
+     highlight's bounding rect, so it appears right beside whichever mark was
+     clicked, instead of a persistent full-height docked sidebar. */
+  .audit-content { position: relative; }
+  .clause-panel {
+    position: absolute; width: 320px; max-height: calc(100% - 40px);
+    border-radius: 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.2);
+    display: none; flex-direction: column; overflow: hidden; z-index: 30;
+  }
+  .clause-panel.open { display: flex; }
+  .clause-panel.sev-critical { background: #FFA3A3; }
+  .clause-panel.sev-warning { background: #FFD48A; }
+  .clause-panel.sev-info { background: #9DC7FF; }
+  .clause-panel-head { padding: 14px 18px; border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .clause-panel-head h3 { margin: 0; font-size: 14px; color: #201a1a; }
+  .clause-panel-head .ask-close { color: rgba(32,26,26,0.7); }
+  .clause-panel-body { flex: 1; overflow-y: auto; padding: 16px 18px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: #201a1a; }
+
+  /* "View in grant document" panel: opened from a flagged criterion that has
+     no proposal-side evidence to show (so there's nothing to highlight in
+     the proposal), showing instead where the requirement itself came from in
+     the grant's own source document -- the actual page, rendered as an image
+     (app/server.py's /page-image, via pdfplumber -- not a native <iframe>
+     PDF viewer, which is a sandboxed black box that can't have a JS-drawn
+     highlight box overlaid on it), with a real text layer parsed ourselves
+     from the same PDF (/page-text-layer, one word box per word) laid over
+     the image -- invisible selectable spans for copy/select, plus one or
+     more highlight boxes computed client-side (findWordRun/mergeWordBoxes
+     below) against that word layer -- and the extracted page text as a
+     secondary, copyable aid below it. */
+  .grant-source-panel { width: 460px; }
+  .grant-source-page-wrap { position: relative; width: 100%; margin-bottom: 14px; border: 1px solid rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; background: #fff; line-height: 0; }
+  .grant-source-page-img { width: 100%; display: block; }
+  /* One invisible, user-selectable span per word (from /page-text-layer),
+     positioned over its glyphs in the rendered page image -- approximates a
+     real PDF viewer's text layer (word-level selection works; the browser's
+     default font doesn't match the PDF's own glyph widths, so selection
+     within a word can drift slightly -- a real text-layer implementation
+     would need a per-span transform: scaleX to correct that, which this
+     doesn't attempt). Word-level highlight boxes below are unaffected by
+     this since they're positioned from the same source boxes, not from font
+     metrics. */
+  .grant-source-word { position: absolute; color: transparent; -webkit-text-fill-color: transparent; user-select: text; white-space: pre; overflow: hidden; cursor: text; }
+  .grant-source-word::selection { background: rgba(59,130,246,0.35); }
+  .grant-source-hl-box { position: absolute; border-radius: 2px; pointer-events: none; opacity: 0; transition: opacity 0.25s ease; }
+  .grant-source-hl-box.shown { opacity: 1; }
+  .grant-source-hl-box.sev-critical { background: rgba(239,68,68,0.35); outline: 2px solid #EF4444; }
+  .grant-source-hl-box.sev-warning { background: rgba(245,158,11,0.35); outline: 2px solid #F59E0B; }
+  .grant-source-hl-box.sev-info { background: rgba(59,130,246,0.35); outline: 2px solid #3B82F6; }
+  .grant-source-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(32,26,26,0.65); margin-bottom: 6px; }
+  .grant-source-text { font-size: 12px; line-height: 1.6; white-space: pre-wrap; background: rgba(255,255,255,0.55); border-radius: var(--radius-md); padding: 12px 14px; max-height: 180px; overflow-y: auto; }
+  .grant-source-text mark { background: rgba(255,255,255,0.75); color: #201a1a; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+  .grant-source-empty { font-size: 12px; opacity: 0.85; margin: 0; }
+
+  .criterion-card { border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 18px; }
+  .criterion-card.sev-critical { border-color: #FECACA; }
+  .criterion-card.sev-warning { border-color: #FDE68A; }
+  .criterion-card.sev-info { border-color: #BFDBFE; }
+  .criterion-card.sev-resolved { border-color: #BBF7D0; }
+  .crit-head { padding: 13px 18px; display: flex; align-items: flex-start; gap: 12px; }
+  .sev-critical .crit-head { background: linear-gradient(135deg, #FFF1F1 0%, #fff 60%); border-bottom: 1px solid #FECACA; }
+  .sev-warning .crit-head { background: linear-gradient(135deg, #FFFCEB 0%, #fff 60%); border-bottom: 1px solid #FDE68A; }
+  .sev-info .crit-head { background: linear-gradient(135deg, #F0F6FF 0%, #fff 60%); border-bottom: 1px solid #BFDBFE; }
+  .sev-resolved .crit-head { background: linear-gradient(135deg, #F0FDF4 0%, #fff 60%); border-bottom: 1px solid #BBF7D0; }
+  .crit-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sev-critical .crit-icon { background: #FEE2E2; color: #EF4444; }
+  .sev-warning .crit-icon { background: #FEF3C7; color: #F59E0B; }
+  .sev-info .crit-icon { background: #DBEAFE; color: #3B82F6; }
+  .sev-resolved .crit-icon { background: #DCFCE7; color: #22C55E; }
+  .crit-tag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 9px; border-radius: 999px; }
+  .sev-critical .crit-tag { background: #FEE2E2; color: #DC2626; }
+  .sev-warning .crit-tag { background: #FEF3C7; color: #92400E; }
+  .sev-info .crit-tag { background: #DBEAFE; color: #1D4ED8; }
+  .sev-resolved .crit-tag { background: #DCFCE7; color: #15803D; }
+  .crit-title { font-size: 12px; font-weight: 700; }
+  .crit-body { padding: 16px 18px; background: #fff; font-size: 13px; line-height: 1.75; }
+  .crit-rec { padding: 14px 18px; border-top: 1px dashed var(--border); }
+  .sev-critical .crit-rec { background: #FFFAFA; border-color: #FECACA; }
+  .sev-warning .crit-rec { background: #FFFEF5; border-color: #FDE68A; }
+  .sev-info .crit-rec { background: #F8FBFF; border-color: #BFDBFE; }
+  .sev-resolved .crit-rec { background: #F0FDF4; border-color: #BBF7D0; }
+  .crit-rec-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; display: flex; align-items: center; gap: 3px; }
+  .sev-critical .crit-rec-label { color: #DC2626; }
+  .sev-warning .crit-rec-label { color: #92400E; }
+  .sev-info .crit-rec-label { color: #1D4ED8; }
+  .view-clause-btn { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; background: none; border: none; cursor: pointer; padding: 5px 10px; border-radius: 999px; flex-shrink: 0; margin-left: auto; }
+  .sev-critical .view-clause-btn { color: #EF4444; background: #FEE2E2; }
+  .sev-warning .view-clause-btn { color: #F59E0B; background: #FEF3C7; }
+  .sev-info .view-clause-btn { color: #3B82F6; background: #DBEAFE; }
+  .sev-resolved .view-clause-btn { color: #22C55E; background: #DCFCE7; }
+
+  /* ── Editable annotated proposal document ── */
+  .doc-toolbar { display: flex; align-items: center; gap: 10px; margin: 24px 0 10px; }
+  .doc-toolbar-label { font-size: 11px; color: var(--muted-foreground); flex: 1; }
+  .doc-editable {
+    background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: var(--radius-lg);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04);
+    padding: 32px 36px; font-size: 13px; line-height: 1.8;
+    outline: none; min-height: 200px;
+  }
+  .doc-editable h3 { font-size: 15px; font-weight: 800; margin: 22px 0 8px; }
+  .doc-editable h3:first-child { margin-top: 0; }
+  /* A title that wraps across several PDF lines becomes several consecutive
+     <h3> blocks (no font-size data available to detect "still the same
+     heading" with) -- tighten the gap between back-to-back headings so a
+     wrapped title reads as one cohesive line group instead of looking like
+     several stacked sections. */
+  .doc-editable h3 + h3 { margin-top: 2px; }
+  .doc-editable p { margin: 0 0 14px; }
+  .doc-editable .bullet-list { margin: 0 0 14px; }
+  .doc-editable .bullet-row { display: flex; gap: 8px; margin: 0 0 6px; }
+  .doc-editable .bullet-row .bullet-dot { color: var(--muted-foreground); flex-shrink: 0; font-size: 10px; margin-top: 6px; }
+  .doc-editable mark { border-radius: 3px; padding: 1px 2px; cursor: pointer; }
+  .doc-editable mark.sev-critical { background: #FEE2E2; color: #991B1B; }
+  .doc-editable mark.sev-warning { background: #FEF3C7; color: #92400E; }
+  .doc-editable mark.sev-info { background: #DBEAFE; color: #1D4ED8; }
+  /* Real pdfplumber-detected tables (budget breakdowns, itineraries, etc.),
+     styled to resemble the grid layout they have in the source PDF instead
+     of being flattened into run-on paragraph text. */
+  .doc-editable .doc-table-wrap { overflow-x: auto; margin: 8px 0 18px; }
+  .doc-editable table.doc-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .doc-editable table.doc-table th, .doc-editable table.doc-table td {
+    border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top;
+  }
+  .doc-editable table.doc-table th { background: var(--muted); font-weight: 700; }
+  /* A flagged criterion whose evidence points into a table (findBestTableRow)
+     highlights the whole matching row rather than an inline <mark> -- cell
+     text interleaves line-by-line in the flat extracted text (see
+     placeTable's comment), so a precise cell/span-level offset isn't reliable. */
+  .doc-editable table.doc-table tr.doc-table-row-hit { cursor: pointer; }
+  .doc-editable table.doc-table tr.doc-table-row-hit.sev-critical td { background: #FEE2E2; color: #991B1B; }
+  .doc-editable table.doc-table tr.doc-table-row-hit.sev-warning td { background: #FEF3C7; color: #92400E; }
+  .doc-editable table.doc-table tr.doc-table-row-hit.sev-info td { background: #DBEAFE; color: #1D4ED8; }
+
+  /* "Save as PDF" reuses the browser's own print-to-PDF -- no new dependency,
+     everything stays local. Printing hides the whole app shell and shows
+     only the proposal document itself. */
+  @media print {
+    body * { visibility: hidden; }
+    #vetDocText, #vetDocText * { visibility: visible; }
+    #vetDocText { position: absolute; top: 0; left: 0; width: 100%; box-shadow: none; border: none; }
+  }
+
+  .attn-card { border-radius: var(--radius-md); border: 1px solid var(--border); padding: 12px 14px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-start; }
+  .attn-card.sev-critical { border-color: #FECACA; background: #FFFAFA; }
+  .attn-card.sev-warning { border-color: #FDE68A; background: #FFFEF5; }
+  .attn-card.sev-info { border-color: #BFDBFE; background: #F8FBFF; }
+  .attn-card-body { flex: 1; min-width: 0; }
+  .attn-card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .attn-card-sugg { font-size: 12px; opacity: 0.85; margin: 0; }
+
+  .clause-crit-info { background: rgba(255,255,255,0.55); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 14px; }
+  .clause-crit-info .sugg-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(32,26,26,0.65); margin-bottom: 4px; }
+  .clause-crit-info .sugg-text { font-size: 12px; margin: 0; }
+  #clauseRewriteSection { border-top: 1px dashed rgba(0,0,0,0.15); padding-top: 14px; margin-top: 14px; }
+  .rewrite-result { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md); padding: 12px 14px; margin-top: 10px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+  .rewrite-note { font-size: 10px; color: var(--muted-foreground); margin-top: 6px; }
+
+  /* ── Modals ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(13,20,33,0.55); align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); max-width: 480px; width: 100%; box-shadow: var(--shadow-float); position: relative; overflow: hidden; }
+  .modal-box::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #6366F1, #A78BFA, #06B6D4); }
+  .modal-pad { padding: 30px; }
+  .modal-note { color: var(--muted-foreground); font-size: 12px; margin-bottom: 10px; }
+  mark.clause-hit { background: rgba(255,255,255,0.65); color: #201a1a; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+  .launch-file-row { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .launch-file-icon { width: 28px; height: 28px; border-radius: 8px; background: var(--card); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border); }
+
+  .status-text { font-size: 12px; color: var(--muted-foreground); }
+  .status-text.err { color: #DC2626; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside id="sidebar">
+    <div class="glow a"></div>
+    <div class="glow b"></div>
+    <div class="brand-row">
+      <button class="hamburger-btn" id="sidebarToggle" aria-label="Toggle sidebar"></button>
+      <div class="brand-text" id="brandText">
+        <div class="name">Grant Advisor</div>
+        <div class="tag">Local &amp; private</div>
+      </div>
+    </div>
+    <div class="nav-area" id="navArea">
+      <div class="nav-group">
+        <div class="nav-group-label">Grants</div>
+        <button class="nav-btn" data-view="upload-grant"><span class="ic"></span><span class="label">Upload Grant</span></button>
+        <button class="nav-btn" data-view="view-grants"><span class="ic"></span><span class="label">View Grants</span><span class="nav-badge" id="grantsCountBadge">0</span></button>
+        <button class="nav-btn" data-view="find-grant"><span class="ic"></span><span class="label">Find a Grant</span></button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Vetting</div>
+        <button class="nav-btn" data-view="vet-proposal"><span class="ic"></span><span class="label">Upload / Vet Proposal</span><span class="nav-badge alert" id="vetCountBadge" style="display:none;"></span></button>
+      </div>
+    </div>
+    <div class="collapsed-nav" id="collapsedNav">
+      <button class="collapsed-btn" data-view="upload-grant"></button>
+      <button class="collapsed-btn" data-view="view-grants"></button>
+      <button class="collapsed-btn" data-view="find-grant"></button>
+      <button class="collapsed-btn" data-view="vet-proposal"></button>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <!-- ═══ Upload Grant ═══ -->
+    <div class="view" id="view-upload-grant">
+      <div class="view-scroll">
+        <h1 class="page-title">Upload a Grant</h1>
+        <p class="page-sub">Documents are extracted into the grants database, plus a page-cited markdown export you can review.</p>
+
+        <div id="grantUploadIdle">
+          <div class="dropzone" id="grantDrop">
+            <div class="dz-icon"></div>
+            <p class="dz-title">Attach a new grant here</p>
+            <p class="dz-hint">Drag &amp; drop or click to browse</p>
+            <div class="dz-formats"><span class="pill">PDF</span></div>
+          </div>
+          <input type="file" id="grantFileInput" accept="application/pdf" style="display:none;" />
+        </div>
+
+        <div id="grantUploadBusy" class="card status-card" style="display:none;">
+          <div class="dz-icon"></div>
+          <p class="dz-title">Extracting + converting…</p>
+          <p class="dz-hint">This can take a minute on a local model.</p>
+          <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
+        </div>
+
+        <div id="grantUploadDone" class="card status-card success" style="display:none;">
+          <div class="dz-icon"></div>
+          <p class="dz-title">Conversion complete</p>
+          <p class="dz-hint" id="grantUploadDoneText"></p>
+          <div style="display:flex; gap:10px; justify-content:center;">
+            <button class="btn btn-success" id="grantUploadViewBtn">View in Grants →</button>
+            <button class="btn btn-ghost" id="grantUploadAnotherBtn">Upload another</button>
+          </div>
+        </div>
+
+        <div id="grantUploadError" class="card status-card error" style="display:none;">
+          <div class="dz-icon"></div>
+          <p class="dz-title">Couldn't process that file</p>
+          <p class="dz-hint" id="grantUploadErrorText"></p>
+          <button class="btn btn-ghost" id="grantUploadRetryBtn">Try again</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ View Grants ═══ -->
+    <div class="view" id="view-view-grants">
+      <div class="grants-list-panel">
+        <div class="grants-list-head" id="grantsListHead">0 grants</div>
+        <div class="bulk-action-bar" id="bulkActionBar" style="display:none;">
+          <span class="status-text" id="bulkSelectedCount">0 selected</span>
+          <button class="btn btn-sm badge-outdated-btn" id="bulkArchiveBtn">Outdated &amp; Archive</button>
+          <button class="btn btn-sm btn-danger" id="bulkDeleteBtn">Delete</button>
+        </div>
+        <div class="grants-list-body" id="grantsListBody"></div>
+        <div class="archive-section">
+          <button class="archive-header" id="archiveToggle">
+            <span class="ic"></span>
+            <span id="archiveHeaderLabel">Archive (0)</span>
+          </button>
+          <div class="grants-list-body archive-body" id="archiveListBody" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="grant-viewer">
+        <div id="grantViewerEmpty" class="grant-md-empty">Upload a grant to see it here.</div>
+        <div id="grantViewerContent" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+          <div class="grant-viewer-head">
+            <div style="flex:1; min-width:0;">
+              <p class="grant-viewer-title" id="grantViewerTitle"></p>
+              <p class="grant-viewer-sub" id="grantViewerSub"></p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="editGrantsBtn">Edit</button>
+            <button class="ask-toggle" id="askToggleBtn"><span class="ic"></span>Ask a question</button>
+          </div>
+          <div class="grant-viewer-body">
+            <div class="grant-md" id="grantMdContent"></div>
+            <div class="ask-panel" id="askPanel" style="display:none;">
+              <div class="ask-panel-head">
+                <div class="title"><span class="ic"></span>Ask about this grant</div>
+                <button class="ask-close" id="askCloseBtn"></button>
+              </div>
+              <div class="ask-body" id="askBody">
+                <div style="text-align:center; margin-top:28px;">
+                  <p class="status-text" style="margin-bottom:14px;">Ask anything about this grant's document</p>
+                  <div class="ask-suggestions">
+                    <button class="ask-suggestion" data-q="What is the maximum funding amount?">What is the maximum funding amount?</button>
+                    <button class="ask-suggestion" data-q="Who is eligible to apply?">Who is eligible to apply?</button>
+                    <button class="ask-suggestion" data-q="What documents are required?">What documents are required?</button>
+                  </div>
+                </div>
+              </div>
+              <div class="ask-input-row">
+                <input type="text" class="ask-input" id="askInput" placeholder="Type a question…" />
+                <button class="ask-send" id="askSendBtn"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Find a Grant (project -> shortlist -> chat) ═══ -->
+    <div class="view" id="view-find-grant">
+      <div class="view-scroll">
+        <h1 class="page-title">Find a Grant</h1>
+        <p class="page-sub">Describe the project or event idea in your own words to get a shortlist and recommendation, then ask follow-ups.</p>
+
+        <div id="findTextSetup">
+          <textarea id="findTextInput" placeholder="Describe the project or event idea you're planning -- goals, audience, rough budget, anything relevant..." style="width:100%; max-width:560px; min-height:130px; padding:14px 16px; border-radius:var(--radius-md); border:1.5px solid var(--border); font-size:13px; line-height:1.6; resize:vertical; background:var(--card);"></textarea>
+          <div class="row" style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-primary" id="findAnalyzeTextBtn" disabled>Analyze</button>
+            <span class="status-text" id="findTextStatus"></span>
+          </div>
+          <div id="findTextProgress" class="progress-track indeterminate" style="display:none; margin: 10px 0 0; max-width:280px;"><div class="progress-fill"></div></div>
+        </div>
+
+        <div id="findResults" class="card" style="display:none; margin-top:20px; padding:20px; max-width:680px;">
+          <h3 style="margin-top:0;">Shortlisted matches</h3>
+          <div id="findShortlist"></div>
+          <h3>Recommendation</h3>
+          <div id="findSummary" style="white-space:pre-wrap; font-size:13px; line-height:1.7;"></div>
+        </div>
+
+        <div id="findChatPanel" style="display:none; margin-top:20px; max-width:680px;">
+          <h3>Ask a follow-up</h3>
+          <div id="findChatLog" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;"></div>
+          <div style="display:flex; gap:10px;">
+            <input type="text" id="findChatInput" class="ask-input" style="flex:1; border-radius:8px;" placeholder="e.g. Which of these has the lowest match-funding requirement?" />
+            <button class="btn btn-primary" id="findChatBtn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Vet Proposal ═══ -->
+    <div class="view" id="view-vet-proposal">
+      <div class="view-scroll" id="vetSetupScroll">
+        <h1 class="page-title">Upload &amp; Vet a Proposal</h1>
+        <p class="page-sub" id="vetPageSub">Select a grant to audit against, then upload your proposal draft.</p>
+
+        <div class="tab-row">
+          <button class="tab-btn active" id="vetTabFit">Grant Fit</button>
+          <button class="tab-btn" id="vetTabCompleteness">Completeness Check</button>
+        </div>
+
+        <div id="vetFitSetup">
+          <div class="card" style="padding:18px; margin-bottom:20px; max-width:640px;">
+            <p style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted-foreground); margin:0 0 12px;">Audit against</p>
+            <div class="grant-select-list" id="vetGrantSelectList"></div>
+          </div>
+          <div class="dropzone" id="vetFitDrop" style="max-width:640px; padding:48px 32px;">
+            <div class="dz-icon"></div>
+            <p class="dz-title">Attach your proposal draft</p>
+            <p class="dz-hint">Drag &amp; drop or click to browse</p>
+            <div class="dz-formats"><span class="pill">PDF</span></div>
+          </div>
+          <input type="file" id="vetFitFileInput" accept="application/pdf" style="display:none;" />
+        </div>
+
+        <div id="vetCompletenessSetup" style="display:none;">
+          <div class="dropzone" id="vetCompDrop" style="max-width:640px; padding:48px 32px;">
+            <div class="dz-icon"></div>
+            <p class="dz-title">Attach your proposal draft</p>
+            <p class="dz-hint">Grant-agnostic: checks for a budget, timeline, objectives, etc.</p>
+            <div class="dz-formats"><span class="pill">PDF</span></div>
+          </div>
+          <input type="file" id="vetCompFileInput" accept="application/pdf" style="display:none;" />
+        </div>
+
+        <div id="vetBusy" class="card status-card" style="display:none; margin-top:20px; max-width:640px;">
+          <div class="dz-icon"></div>
+          <p class="dz-title" id="vetBusyTitle">Analyzing…</p>
+          <p class="dz-hint">This can take a minute on a local model.</p>
+          <div class="progress-track indeterminate"><div class="progress-fill"></div></div>
+        </div>
+
+        <div id="vetSetupError" class="card status-card error" style="display:none; margin-top:20px; max-width:640px;">
+          <div class="dz-icon"></div>
+          <p class="dz-title">Couldn't process that file</p>
+          <p class="dz-hint" id="vetSetupErrorText"></p>
+        </div>
+      </div>
+
+      <div id="vetComplete" style="display:none; flex-direction:column; height:100%; flex:1; overflow:hidden;">
+        <div class="audit-topbar">
+          <span class="ic"></span>
+          <span class="status-text">Audited against</span>
+          <strong id="vetAuditedGrantName"></strong>
+          <div class="counts" id="vetCounts"></div>
+          <button class="btn btn-ghost btn-sm" id="vetReuploadBtn"><span class="ic"></span>Re-upload</button>
+        </div>
+        <div class="audit-content">
+          <div class="audit-body">
+            <div class="audit-body-row">
+              <div class="audit-doc">
+                <div id="vetNeedsAttention"></div>
+                <div class="doc-toolbar">
+                  <span class="doc-toolbar-label">Proposal text — click a highlight to see why it's flagged</span>
+                  <button class="btn btn-ghost btn-sm" id="vetSavePdfBtn">Save as PDF</button>
+                  <button class="btn btn-ghost btn-sm" id="vetSaveWordBtn">Save as Word</button>
+                  <button class="btn btn-ghost btn-sm" id="vetDownloadBtn">Download as .txt</button>
+                </div>
+                <div class="doc-editable" id="vetDocText" contenteditable="true" spellcheck="false"></div>
+              </div>
+              <div class="category-panel" id="categoryPanel" style="display:none;">
+                <div class="category-panel-head">Likely category fit</div>
+                <div id="categoryList"></div>
+              </div>
+            </div>
+          </div>
+          <div class="clause-panel" id="clausePanel">
+            <div class="clause-panel-head">
+              <h3 id="clauseModalTitle">Source clause</h3>
+              <button class="ask-close" id="clauseModalClose">&times;</button>
+            </div>
+            <div class="clause-panel-body">
+              <div class="modal-note" id="clauseModalNote"></div>
+              <div class="clause-crit-info" id="clauseCritInfo"></div>
+              <div id="clauseModalText"></div>
+              <div id="clauseRewriteSection" style="display:none;"></div>
+            </div>
+          </div>
+          <div class="clause-panel grant-source-panel" id="grantSourcePanel">
+            <div class="clause-panel-head">
+              <h3>Grant source</h3>
+              <button class="ask-close" id="grantSourceClose">&times;</button>
+            </div>
+            <div class="clause-panel-body" id="grantSourceBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ Launch modal: pending grants/ inbox PDFs ═══ -->
+<div class="modal-overlay" id="launchModal">
+  <div class="modal-box">
+    <div class="modal-pad" id="launchModalBody"></div>
+  </div>
+</div>
+
+<!-- ═══ Grant document modal: "View document" from Find a Grant's shortlist,
+     opens the grant's own source page (image + highlight) for whichever
+     focus-area category it locates, mirroring the vet-proposal view's
+     grant-source panel but as a centered modal since this view has no
+     audit-content column layout to anchor a floating panel against ═══ -->
+<div class="modal-overlay" id="grantDocModal">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-pad" style="padding:0;">
+      <div class="clause-panel-head" style="padding:16px 20px;">
+        <div>
+          <h3 id="grantDocModalTitle" style="margin:0 0 2px;"></h3>
+          <p class="status-text" id="grantDocModalCategory" style="margin:0;"></p>
+        </div>
+        <button class="ask-close" id="grantDocModalClose">&times;</button>
+      </div>
+      <div style="padding:0 20px 20px;" id="grantDocModalBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Icons: minimal inline SVGs, stroke-based to loosely match the source design's icon set ───
+const ICONS = {
+  menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+  paperclip: '<path d="M21 12.5l-8.5 8.5a4.5 4.5 0 01-6.4-6.4L15 5.7a3 3 0 014.2 4.2L10 19"/>',
+  upload: '<path d="M12 19V6M6 12l6-6 6 6"/><line x1="4" y1="21" x2="20" y2="21"/>',
+  filetext: '<path d="M6 2h9l5 5v15H6z"/><path d="M8 12h8M8 16h8M8 8h4"/>',
+  message: '<path d="M21 11.5a8.38 8.38 0 01-8.5 8.5c-1.4 0-2.7-.3-3.9-.9L3 20l1-5.6A8.5 8.5 0 1121 11.5z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+  alerttriangle: '<path d="M12 2 1 21h22z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.5" r="0.6" fill="currentColor" stroke="none"/>',
+  xcircle: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
+  checkcircle: '<circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/>',
+  info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/>',
+  externallink: '<path d="M14 4h6v6"/><path d="M20 4L10 14"/><path d="M18 13v6H5V6h6"/>',
+  eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>',
+  fileplus: '<path d="M6 2h9l5 5v15H6z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/>',
+  layoutlist: '<rect x="3" y="4" width="7" height="16"/><line x1="14" y1="6" x2="21" y2="6"/><line x1="14" y1="12" x2="21" y2="12"/><line x1="14" y1="18" x2="21" y2="18"/>',
+  filecheck: '<path d="M6 2h9l5 5v15H6z"/><polyline points="9 14 11 16 15 11"/>',
+  folder: '<path d="M3 6a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  chevronright: '<polyline points="9 6 15 12 9 18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+};
+function icon(name, size) {
+  size = size || 14;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+}
+function fillIcons(root, map) {
+  (root || document).querySelectorAll('.ic').forEach((el) => {
+    const name = map || el.dataset.icon;
+    if (name) el.innerHTML = icon(typeof map === 'string' ? map : el.dataset.icon);
+  });
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+function inlineMd(text) {
+  const parts = escapeHtml(text).split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p) => (p.startsWith('**') && p.endsWith('**')) ? `<strong>${p.slice(2, -2)}</strong>` : p).join('');
+}
+
+// ─── Markdown renderer (port of the design's MarkdownViewer) ───
+function renderMarkdown(content) {
+  const lines = content.split('\n');
+  let html = '';
+  let tableBuffer = [];
+  const flushTable = () => {
+    if (tableBuffer.length >= 2) {
+      const headers = tableBuffer[0];
+      const rows = tableBuffer.slice(2);
+      html += '<div style="overflow-x:auto;"><table><thead><tr>' +
+        headers.map((h) => `<th>${inlineMd(h.trim())}</th>`).join('') +
+        '</tr></thead><tbody>' +
+        rows.map((row) => '<tr>' + row.map((c) => `<td>${inlineMd(c.trim())}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table></div>';
+    }
+    tableBuffer = [];
+  };
+  let inTable = false;
+  lines.forEach((line) => {
+    if (line.trim().startsWith('|')) {
+      inTable = true;
+      const cells = line.split('|').slice(1, -1);
+      if (!cells.every((c) => /^[-:\s]+$/.test(c))) tableBuffer.push(cells);
+      return;
+    }
+    if (inTable) { flushTable(); inTable = false; }
+    if (line.startsWith('# ')) html += `<h1>${inlineMd(line.slice(2))}</h1>`;
+    else if (line.startsWith('## ')) html += `<h2>${inlineMd(line.slice(3))}</h2>`;
+    else if (line.trim() === '---') html += '<hr/>';
+    else if (line.startsWith('- ')) html += `<div class="li"><span class="bullet">●</span><span>${inlineMd(line.slice(2))}</span></div>`;
+    else if (/^\d+\. /.test(line)) { const m = line.match(/^(\d+)\. (.+)/); html += `<div class="li"><span>${m[1]}.</span><span>${inlineMd(m[2])}</span></div>`; }
+    else if (line.trim() === '') html += '<div style="height:5px;"></div>';
+    else html += `<p>${inlineMd(line)}</p>`;
+  });
+  if (inTable) flushTable();
+  return html;
+}
+
+// ─── Clause viewer (reused pattern: locate an evidence quote inside full source text) ───
+function extractQuotedSnippet(evidence) {
+  let match = evidence.match(/["“]([^"”]{6,})["”]/);
+  if (match) return match[1];
+  // The model sometimes wraps embedded examples in single quotes instead
+  // (e.g. "...(e.g., 'Learning X,' 'Visual demo Y')") -- try that too.
+  match = evidence.match(/['‘]([^'’]{6,})['’]/);
+  return match ? match[1] : evidence;
+}
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+// A trailing colon/comma/period/semicolon is often a seam the model added or
+// dropped when turning a heading/table cell into prose (e.g. "Audience:" vs
+// the source's "Audience"), not a real content difference -- make it
+// optional in the token's regex rather than requiring or stripping it.
+function tokenPattern(token) {
+  const m = token.match(/^(.*?)([:;,.]+)$/);
+  if (m && m[1]) return escapeRegex(m[1]) + '(?:' + escapeRegex(m[2]) + ')?';
+  return escapeRegex(token);
+}
+// pdfplumber's extracted text line-wraps mid-sentence, so a phrase the model
+// quoted with a plain space often has a newline in the source at that same
+// spot -- a literal indexOf() misses it. Also, small local models sometimes
+// drop or reorder a word or a whole clause inside an otherwise-real quote
+// (e.g. compressing two non-adjacent sentences together), or wrap a real
+// verbatim fragment in explanatory prose the source never states in that
+// form (e.g. a criterion like "Maximum subsidy capped at $25 per participant
+// for general projects" where only "$25 per participant", mid-sentence, is
+// actually verbatim). Building a whitespace-tolerant regex from every
+// contiguous run of the snippet's words, longest first, tried at every
+// starting offset within the snippet (not just anchored at word 0) -- run
+// directly against the ORIGINAL fullText, never a normalized copy -- finds
+// the longest exact-order run that's really there, so match.index/length
+// stay valid offsets into fullText for the rest of the pipeline. `from`/`to`
+// restrict the search to fullText.slice(from, to) while still returning
+// offsets absolute into fullText -- used by the table-placement logic below
+// to search forward from a cursor instead of always finding the first
+// (possibly wrong, e.g. a repeated page header) occurrence in the doc.
+function findInText(fullText, snippet, from, to) {
+  from = from || 0;
+  to = (to === undefined) ? fullText.length : to;
+  const haystack = fullText.slice(from, to);
+  const tokens = snippet.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  const minWords = Math.min(3, tokens.length);
+  for (let n = tokens.length; n >= minWords; n--) {
+    for (let start = 0; start <= tokens.length - n; start++) {
+      const pattern = tokens.slice(start, start + n).map(tokenPattern).join('\\s+');
+      try {
+        const m = new RegExp(pattern, 'i').exec(haystack);
+        if (m) return { index: from + m.index, length: m[0].length };
+      } catch (e) { /* pathological window (e.g. all punctuation) -- try the next one */ }
+    }
+  }
+  return null;
+}
+const clausePanel = document.getElementById('clausePanel');
+const clauseModalTitle = document.getElementById('clauseModalTitle');
+const clauseModalNote = document.getElementById('clauseModalNote');
+const clauseModalText = document.getElementById('clauseModalText');
+const clauseCritInfo = document.getElementById('clauseCritInfo');
+const clauseRewriteSection = document.getElementById('clauseRewriteSection');
+function closeClausePanel() {
+  clausePanel.classList.remove('open');
+  document.querySelector('.audit-body').removeEventListener('scroll', closeClausePanel);
+}
+document.getElementById('clauseModalClose').addEventListener('click', closeClausePanel);
+
+// Positions a floating panel (clausePanel or grantSourcePanel) beside
+// whichever element (mark, attn-card, or table row) was clicked, clamped
+// inside .audit-content so it never overflows the vetting pane -- mirrors a
+// Grammarly-style anchored callout rather than a fixed docked sidebar.
+function positionPanel(panel, anchorEl, panelWidth) {
+  const container = document.querySelector('.audit-content');
+  const containerRect = container.getBoundingClientRect();
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const margin = 20;
+  panelWidth = panelWidth || 320;
+  let left = anchorRect.right - containerRect.left + 16;
+  if (left + panelWidth + margin > containerRect.width) {
+    left = containerRect.width - panelWidth - margin;
+  }
+  panel.style.left = Math.max(margin, left) + 'px';
+  panel.style.top = margin + 'px'; // provisional, refined once panel height is known below
+  requestAnimationFrame(() => {
+    const panelHeight = panel.offsetHeight;
+    let top = anchorRect.top - containerRect.top - 10;
+    const maxTop = containerRect.height - panelHeight - margin;
+    top = Math.max(margin, Math.min(top, maxTop));
+    panel.style.top = top + 'px';
+  });
+}
+
+const grantSourcePanel = document.getElementById('grantSourcePanel');
+const grantSourceBody = document.getElementById('grantSourceBody');
+function closeGrantSourcePanel() {
+  grantSourcePanel.classList.remove('open');
+  document.querySelector('.audit-body').removeEventListener('scroll', closeGrantSourcePanel);
+}
+document.getElementById('grantSourceClose').addEventListener('click', closeGrantSourcePanel);
+
+// Client-side text layer: we parse the grant's PDF ourselves (server-side,
+// via pdfplumber -- see /api/grants/{id}/page-text-layer/{n}) into one
+// {text, x0, top, x1, bottom} box per word, fractional to the page's own
+// size, and ship the WHOLE page's words to the browser. Highlighting then
+// happens entirely client-side against that word layer: any needle, several
+// at once, no per-highlight server round trip. This mirrors the same
+// decreasing-prefix / trailing-punctuation-tolerant matching grant_markdown.py
+// uses server-side for page citation (_token_pattern/_find_in_page) -- same
+// problem (a single-shot LLM extraction can reformat or drop a trailing
+// word), same fix, ported to JS since the match now happens in the browser.
+function normWord(word) {
+  return word.replace(/[:;,.]+$/, '').toLowerCase();
+}
+
+// Finds `needle` as a contiguous run of words in `words` (server's
+// page-text-layer output), trying decreasing-length prefixes of needle's
+// tokens down to 3 words (or fewer if needle itself is shorter) -- same
+// tolerance as the Python side. Returns the matching words themselves (not
+// yet merged into lines) or null.
+function findWordRun(words, needle) {
+  const needleTokens = (needle || '').trim().split(/\s+/).filter(Boolean);
+  if (!needleTokens.length) return null;
+  const wordTexts = words.map((w) => normWord(w.text));
+  const minWords = Math.min(3, needleTokens.length);
+  for (let n = needleTokens.length; n >= minWords; n--) {
+    const target = needleTokens.slice(0, n).map(normWord);
+    for (let start = 0; start <= wordTexts.length - n; start++) {
+      let match = true;
+      for (let i = 0; i < n; i++) {
+        if (wordTexts[start + i] !== target[i]) { match = false; break; }
+      }
+      if (match) return words.slice(start, start + n);
+    }
+  }
+  return null;
+}
+
+// Merges consecutive matched words into one box per visual line (grouped by
+// nearby fractional `top`), so a highlight spanning multiple lines renders as
+// one clean rectangle per line rather than one per word.
+function mergeWordBoxes(matchedWords, lineTolerance = 0.006) {
+  const boxes = [];
+  let current = null;
+  for (const w of matchedWords) {
+    if (current && Math.abs(w.top - current.top) <= lineTolerance) {
+      current.x0 = Math.min(current.x0, w.x0);
+      current.x1 = Math.max(current.x1, w.x1);
+      current.top = Math.min(current.top, w.top);
+      current.bottom = Math.max(current.bottom, w.bottom);
+    } else {
+      if (current) boxes.push(current);
+      current = { x0: w.x0, x1: w.x1, top: w.top, bottom: w.bottom };
+    }
+  }
+  if (current) boxes.push(current);
+  return boxes;
+}
+
+const pageTextLayerCache = new Map(); // `${grantId}:${page}` -> words[], avoids re-fetching on repeated highlight requests for the same page
+
+async function fetchPageTextLayer(grantId, page) {
+  const key = `${grantId}:${page}`;
+  if (pageTextLayerCache.has(key)) return pageTextLayerCache.get(key);
+  try {
+    const res = await fetch(`/api/grants/${encodeURIComponent(grantId)}/page-text-layer/${page}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const words = data.words || [];
+    pageTextLayerCache.set(key, words);
+    return words;
+  } catch (e) {
+    return [];
+  }
+}
+
+// Opens the "view in grant document" panel for a flagged criterion that has
+// no proposal-side evidence to show (empty item.evidence) -- the only useful
+// thing left to show is where the requirement itself came from in the
+// grant's own document. `item` needs a `grantId` (set by renderVetFitResult;
+// grant-agnostic completeness items never have one, so this is never wired
+// up for that flow) and `title` (the criterion text to locate).
+// Renders a page-image viewer (prev/next paging) into grantSourceBody, with
+// a real text layer over it: every word on the page becomes an invisible,
+// selectable span (approximating word-level select/copy off the image --
+// see the .grant-source-word CSS comment for the one place this falls short
+// of a true PDF viewer's text layer), and each entry in `highlights` (an
+// array of {text, sevKey}) is located within that word layer and drawn as a
+// highlight box -- multiple highlights on the same page are all shown at
+// once. Paging just re-requests
+// /page-image for the new number and lets it 404 past the last page --
+// there's no page-count endpoint, so "Next" past the end simply disables
+// itself once the image fails to load, rather than pre-fetching a count.
+function renderGrantPageNav(container, grantId, initialPage, highlights) {
+  const nav = document.createElement('div');
+  nav.style.cssText = 'display:flex; align-items:center; gap:10px; margin-bottom:10px;';
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'btn btn-ghost btn-sm';
+  prevBtn.textContent = '‹ Prev';
+  const pageLabel = document.createElement('span');
+  pageLabel.className = 'status-text';
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'btn btn-ghost btn-sm';
+  nextBtn.textContent = 'Next ›';
+  nav.append(prevBtn, pageLabel, nextBtn);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'grant-source-page-wrap';
+  const img = document.createElement('img');
+  img.className = 'grant-source-page-img';
+  wrap.appendChild(img);
+
+  container.append(nav, wrap);
+
+  let page = initialPage;
+  let loadToken = 0; // guards against a stale async response landing after a newer page load started
+
+  function renderWordLayer(words) {
+    wrap.querySelectorAll('.grant-source-word').forEach((el) => el.remove());
+    words.forEach((w) => {
+      const span = document.createElement('span');
+      span.className = 'grant-source-word';
+      span.textContent = w.text;
+      span.style.left = (w.x0 * 100) + '%';
+      span.style.top = (w.top * 100) + '%';
+      span.style.width = ((w.x1 - w.x0) * 100) + '%';
+      span.style.height = ((w.bottom - w.top) * 100) + '%';
+      span.style.fontSize = ((w.bottom - w.top) * wrap.clientHeight * 0.82) + 'px';
+      wrap.appendChild(span);
+    });
+  }
+
+  function renderHighlightBoxes(words, reqs) {
+    wrap.querySelectorAll('.grant-source-hl-box').forEach((b) => b.remove());
+    (reqs || []).forEach(({ text, sevKey }) => {
+      const run = findWordRun(words, text);
+      if (!run) return;
+      mergeWordBoxes(run).forEach((b) => {
+        const box = document.createElement('div');
+        box.className = 'grant-source-hl-box' + (sevKey ? ' sev-' + sevKey : '');
+        box.style.left = (b.x0 * 100) + '%';
+        box.style.top = (b.top * 100) + '%';
+        box.style.width = ((b.x1 - b.x0) * 100) + '%';
+        box.style.height = ((b.bottom - b.top) * 100) + '%';
+        wrap.appendChild(box);
+        requestAnimationFrame(() => box.classList.add('shown'));
+      });
+    });
+  }
+
+  function loadPage(p, reqs) {
+    page = p;
+    const token = ++loadToken;
+    prevBtn.disabled = p <= 1;
+    pageLabel.textContent = `Page ${p}`;
+    img.onerror = () => { pageLabel.textContent = `Page ${p} unavailable`; nextBtn.disabled = true; };
+    img.onload = async () => {
+      const words = await fetchPageTextLayer(grantId, p);
+      if (token !== loadToken) return; // a newer loadPage() call has since superseded this one
+      renderWordLayer(words);
+      renderHighlightBoxes(words, reqs || []);
+    };
+    img.src = `/api/grants/${encodeURIComponent(grantId)}/page-image/${p}`;
+  }
+
+  prevBtn.addEventListener('click', () => { if (page > 1) loadPage(page - 1, []); });
+  nextBtn.addEventListener('click', () => loadPage(page + 1, []));
+  loadPage(initialPage, highlights);
+}
+
+async function openGrantSource(item, anchorEl) {
+  if (!item.grantId) return;
+  closeClausePanel();
+  grantSourcePanel.className = 'clause-panel grant-source-panel open' + (item.sevKey ? ' sev-' + item.sevKey : '');
+  grantSourceBody.innerHTML = '<p class="status-text">Looking up this requirement in the grant document…</p>';
+  positionPanel(grantSourcePanel, anchorEl, 460);
+  document.querySelector('.audit-body').removeEventListener('scroll', closeGrantSourcePanel);
+  document.querySelector('.audit-body').addEventListener('scroll', closeGrantSourcePanel, { once: true });
+
+  let data;
+  try {
+    const res = await fetch(`/api/grants/${encodeURIComponent(item.grantId)}/locate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: item.title }),
+    });
+    if (!res.ok) throw new Error('lookup failed');
+    data = await res.json();
+  } catch (e) {
+    grantSourceBody.innerHTML = '<p class="grant-source-empty">Couldn\'t reach the grant lookup.</p>';
+    return;
+  }
+
+  grantSourceBody.innerHTML = '';
+  if (data.has_source_file) {
+    // Located: jump straight to the source page with its highlight box.
+    // Not located: still show the document (starting at page 1) with
+    // prev/next paging, so there's something to browse rather than a dead end.
+    const highlights = data.located ? [{ text: item.title, sevKey: item.sevKey }] : [];
+    renderGrantPageNav(grantSourceBody, item.grantId, data.located ? data.page : 1, highlights);
+  }
+  if (data.located) {
+    const label = document.createElement('div');
+    label.className = 'grant-source-label';
+    label.textContent = `Extracted text (p.${data.page})`;
+    grantSourceBody.appendChild(label);
+    const textEl = document.createElement('div');
+    textEl.className = 'grant-source-text';
+    const before = data.page_text.slice(0, data.index);
+    const hit = data.page_text.slice(data.index, data.index + data.length);
+    const after = data.page_text.slice(data.index + data.length);
+    textEl.appendChild(document.createTextNode(before));
+    const mark = document.createElement('mark');
+    mark.textContent = hit;
+    textEl.appendChild(mark);
+    textEl.appendChild(document.createTextNode(after));
+    grantSourceBody.appendChild(textEl);
+    requestAnimationFrame(() => {
+      if (mark.scrollIntoView) mark.scrollIntoView({ block: 'center' });
+    });
+  } else {
+    const note = document.createElement('p');
+    note.className = 'grant-source-empty';
+    note.textContent = data.has_source_file
+      ? "Couldn't pinpoint this exact requirement in the document text (it may have been paraphrased during ingestion) -- browse the page image above to find it manually."
+      : "Couldn't locate this requirement's exact wording, and no source file is on record for this grant.";
+    grantSourceBody.appendChild(note);
+  }
+}
+
+// crit: { title, suggestion, evidence, fullText, rewriteEligible, sevKey }
+function openClauseModal(crit, anchorEl) {
+  closeGrantSourcePanel();
+  clausePanel.className = 'clause-panel open' + (crit.sevKey ? ' sev-' + crit.sevKey : '');
+  clauseModalTitle.textContent = crit.title;
+  clauseCritInfo.innerHTML = crit.suggestion
+    ? `<div class="sugg-label">Suggestion</div><p class="sugg-text">${escapeHtml(crit.suggestion)}</p>`
+    : '';
+
+  const match = crit.evidence ? findInText(crit.fullText, extractQuotedSnippet(crit.evidence)) : null;
+  clauseModalText.innerHTML = '';
+  if (!crit.evidence) {
+    clauseModalNote.textContent = 'No evidence text available for this requirement.';
+  } else if (!match) {
+    clauseModalNote.textContent = "Couldn't locate an exact match for this evidence in the extracted text (the model may have paraphrased) -- showing the full document for manual review.";
+    clauseModalText.textContent = crit.fullText;
+  } else {
+    clauseModalNote.textContent = 'Highlighted below where this evidence was found in the extracted document text.';
+    const before = crit.fullText.slice(0, match.index);
+    const hit = crit.fullText.slice(match.index, match.index + match.length);
+    const after = crit.fullText.slice(match.index + match.length);
+    clauseModalText.appendChild(document.createTextNode(before));
+    const mark = document.createElement('mark');
+    mark.className = 'clause-hit';
+    mark.textContent = hit;
+    clauseModalText.appendChild(mark);
+    clauseModalText.appendChild(document.createTextNode(after));
+  }
+
+  clauseRewriteSection.innerHTML = '';
+  if (crit.rewriteEligible && crit.evidence) {
+    clauseRewriteSection.style.display = '';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary btn-sm';
+    btn.textContent = 'Suggest a rewrite';
+    btn.addEventListener('click', () => runSuggestRewrite(crit, btn));
+    clauseRewriteSection.appendChild(btn);
+  } else {
+    clauseRewriteSection.style.display = 'none';
+  }
+
+  if (anchorEl) positionPanel(clausePanel, anchorEl, 320);
+  requestAnimationFrame(() => {
+    const markEl = clauseModalText.querySelector('mark');
+    if (markEl && markEl.scrollIntoView) markEl.scrollIntoView({ block: 'center' });
+  });
+  document.querySelector('.audit-body').removeEventListener('scroll', closeClausePanel);
+  document.querySelector('.audit-body').addEventListener('scroll', closeClausePanel, { once: true });
+}
+
+async function runSuggestRewrite(crit, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  let resultEl = clauseRewriteSection.querySelector('.rewrite-result-wrap');
+  if (resultEl) resultEl.remove();
+  try {
+    const res = await fetch('/api/proposals/suggest-rewrite', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excerpt: crit.evidence, criterion: crit.title, suggestion: crit.suggestion }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    resultEl = document.createElement('div');
+    resultEl.className = 'rewrite-result-wrap';
+    resultEl.innerHTML = `<div class="rewrite-result">${escapeHtml(data.rewrite)}</div><div class="rewrite-note">${escapeHtml(data.note)}</div>`;
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-ghost btn-sm';
+    copyBtn.style.marginTop = '8px';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', () => { navigator.clipboard && navigator.clipboard.writeText(data.rewrite); });
+    resultEl.appendChild(copyBtn);
+    clauseRewriteSection.appendChild(resultEl);
+  } catch (e) {
+    resultEl = document.createElement('div');
+    resultEl.className = 'rewrite-result-wrap';
+    resultEl.innerHTML = `<p class="status-text err">Error: ${escapeHtml(e.message)}</p>`;
+    clauseRewriteSection.appendChild(resultEl);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Suggest a rewrite';
+  }
+}
+
+// ─── Drop zone helper (shared across every uploader on this page) ───
+function setupDropZone(dropEl, fileInputEl, onFile) {
+  dropEl.addEventListener('click', () => fileInputEl.click());
+  dropEl.addEventListener('dragover', (e) => { e.preventDefault(); dropEl.classList.add('drag'); });
+  dropEl.addEventListener('dragleave', () => dropEl.classList.remove('drag'));
+  dropEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropEl.classList.remove('drag');
+    if (e.dataTransfer.files.length) onFile(e.dataTransfer.files[0]);
+  });
+  fileInputEl.addEventListener('change', () => {
+    if (fileInputEl.files.length) onFile(fileInputEl.files[0]);
+  });
+}
+
+// ─── Sidebar: view switching + collapse ───
+const sidebar = document.getElementById('sidebar');
+document.getElementById('sidebarToggle').addEventListener('click', () => sidebar.classList.toggle('collapsed'));
+
+let currentView = 'view-grants';
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${view}`));
+  document.querySelectorAll('.nav-btn, .collapsed-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'view-grants') loadGrantsList();
+  if (view === 'vet-proposal') loadVetGrantSelector();
+}
+document.querySelectorAll('[data-view]').forEach((el) => el.addEventListener('click', () => setView(el.dataset.view)));
+
+// Fill icons for static nav/UI chrome
+document.querySelectorAll('.nav-btn[data-view] .ic').forEach((el) => {
+  const view = el.closest('.nav-btn').dataset.view;
+  const map = { 'upload-grant': 'fileplus', 'view-grants': 'layoutlist', 'find-grant': 'search', 'vet-proposal': 'filecheck' };
+  el.innerHTML = icon(map[view], 14);
+});
+document.querySelectorAll('.collapsed-btn[data-view]').forEach((el) => {
+  const view = el.dataset.view;
+  const map = { 'upload-grant': 'fileplus', 'view-grants': 'layoutlist', 'find-grant': 'search', 'vet-proposal': 'filecheck' };
+  el.innerHTML = icon(map[view], 16);
+});
+document.getElementById('sidebarToggle').innerHTML = icon('menu', 15);
+document.querySelectorAll('.dz-icon').forEach((el) => { el.innerHTML = icon('paperclip', 26); });
+document.getElementById('askToggleBtn').querySelector('.ic').innerHTML = icon('message', 13);
+document.getElementById('askPanel').querySelector('.title .ic').innerHTML = icon('message', 16);
+document.getElementById('askCloseBtn').innerHTML = icon('x', 14);
+document.getElementById('askSendBtn').innerHTML = icon('send', 14);
+document.getElementById('vetReuploadBtn').querySelector('.ic').innerHTML = icon('externallink', 10);
+document.getElementById('archiveToggle').querySelector('.ic').innerHTML = icon('chevronright', 12);
+document.querySelector('.audit-topbar .ic').innerHTML = icon('filecheck', 13);
+
+// ─── Upload Grant ───
+const grantDrop = document.getElementById('grantDrop');
+const grantFileInput = document.getElementById('grantFileInput');
+setupDropZone(grantDrop, grantFileInput, handleGrantUpload);
+
+function showGrantUploadState(state) {
+  document.getElementById('grantUploadIdle').style.display = state === 'idle' ? '' : 'none';
+  document.getElementById('grantUploadBusy').style.display = state === 'busy' ? '' : 'none';
+  document.getElementById('grantUploadDone').style.display = state === 'done' ? '' : 'none';
+  document.getElementById('grantUploadError').style.display = state === 'error' ? '' : 'none';
+}
+
+async function handleGrantUpload(file) {
+  showGrantUploadState('busy');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/grants/upload', { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    document.getElementById('grantUploadDoneText').innerHTML = `<strong>${escapeHtml(data.grant.name)}</strong> saved to the grants database.`;
+    showGrantUploadState('done');
+    refreshGrantsCount();
+  } catch (e) {
+    document.getElementById('grantUploadErrorText').textContent = e.message;
+    showGrantUploadState('error');
+  }
+}
+document.getElementById('grantUploadViewBtn').addEventListener('click', () => { showGrantUploadState('idle'); setView('view-grants'); });
+document.getElementById('grantUploadAnotherBtn').addEventListener('click', () => showGrantUploadState('idle'));
+document.getElementById('grantUploadRetryBtn').addEventListener('click', () => showGrantUploadState('idle'));
+
+// ─── View Grants ───
+let grantsCache = [];
+let selectedGrantId = null;
+let qaHistory = [];
+let editMode = false;
+let selectedForAction = new Set();
+let archiveExpanded = false;
+
+function activeGrants() { return grantsCache.filter((g) => !g.archived); }
+function archivedGrants() { return grantsCache.filter((g) => g.archived); }
+
+async function refreshGrantsCount() {
+  const res = await fetch('/api/grants');
+  const data = await res.json();
+  grantsCache = data.grants;
+  document.getElementById('grantsCountBadge').textContent = activeGrants().length;
+}
+
+async function loadGrantsList() {
+  await refreshGrantsCount();
+  renderGrantsList();
+}
+
+function buildGrantItem(g, isArchived) {
+  const btn = document.createElement('button');
+  btn.className = 'grant-item' + (g.id === selectedGrantId ? ' selected' : '');
+  btn.dataset.id = g.id;
+  const checked = selectedForAction.has(g.id);
+  const leading = editMode
+    ? `<div class="grant-item-checkbox${checked ? ' checked' : ''}">${checked ? icon('check', 11) : ''}</div>`
+    : `<div class="grant-item-icon">${icon('filetext', 14)}</div>`;
+  btn.innerHTML = `
+    <div class="grant-item-row">
+      ${leading}
+      <div style="flex:1; min-width:0;">
+        <div class="grant-item-name">${escapeHtml(g.name)}</div>
+        <div class="grant-item-org">${escapeHtml(g.funder || '')}</div>
+      </div>
+      ${isArchived ? '<span class="badge-outdated">Outdated</span>' : ''}
+    </div>
+    <div class="grant-item-meta">
+      ${g.typical_amount ? `<span class="b">${escapeHtml(g.typical_amount)}</span>` : ''}
+      <span style="margin-left:auto;">${escapeHtml(g.last_verified || '')}</span>
+      ${isArchived ? '<button class="btn btn-ghost btn-sm restore-btn" style="margin-left:8px;">Restore</button>' : ''}
+    </div>`;
+  if (editMode) {
+    btn.addEventListener('click', () => toggleSelectForAction(g.id));
+  } else {
+    btn.addEventListener('click', () => selectGrant(g.id));
+  }
+  if (isArchived) {
+    const restoreBtn = btn.querySelector('.restore-btn');
+    if (restoreBtn) restoreBtn.addEventListener('click', (e) => { e.stopPropagation(); restoreGrant(g.id); });
+  }
+  return btn;
+}
+
+function renderGrantsList() {
+  const active = activeGrants();
+  const archived = archivedGrants();
+
+  const listBody = document.getElementById('grantsListBody');
+  document.getElementById('grantsListHead').textContent = `${active.length} grant${active.length === 1 ? '' : 's'}`;
+  listBody.innerHTML = '';
+  active.forEach((g) => listBody.appendChild(buildGrantItem(g, false)));
+
+  document.getElementById('archiveHeaderLabel').textContent = `Archive (${archived.length})`;
+  const archiveBody = document.getElementById('archiveListBody');
+  archiveBody.innerHTML = '';
+  archived.forEach((g) => archiveBody.appendChild(buildGrantItem(g, true)));
+
+  updateBulkActionBar();
+
+  if (selectedGrantId && grantsCache.some((g) => g.id === selectedGrantId)) selectGrant(selectedGrantId);
+  else if (!editMode && active.length) selectGrant(active[0].id);
+  else if (!grantsCache.some((g) => g.id === selectedGrantId)) {
+    selectedGrantId = null;
+    document.getElementById('grantViewerEmpty').style.display = '';
+    document.getElementById('grantViewerContent').style.display = 'none';
+  }
+}
+
+function toggleSelectForAction(id) {
+  if (selectedForAction.has(id)) selectedForAction.delete(id);
+  else selectedForAction.add(id);
+  renderGrantsList();
+}
+
+function updateBulkActionBar() {
+  const bar = document.getElementById('bulkActionBar');
+  bar.style.display = editMode ? 'flex' : 'none';
+  if (editMode) {
+    document.getElementById('bulkSelectedCount').textContent = `${selectedForAction.size} selected`;
+    document.getElementById('bulkArchiveBtn').disabled = selectedForAction.size === 0;
+    document.getElementById('bulkDeleteBtn').disabled = selectedForAction.size === 0;
+  }
+}
+
+document.getElementById('editGrantsBtn').addEventListener('click', () => {
+  editMode = !editMode;
+  document.getElementById('editGrantsBtn').textContent = editMode ? 'Cancel' : 'Edit';
+  if (!editMode) selectedForAction.clear();
+  renderGrantsList();
+});
+
+async function exitEditModeAndReload() {
+  selectedForAction.clear();
+  editMode = false;
+  document.getElementById('editGrantsBtn').textContent = 'Edit';
+  await loadGrantsList();
+}
+
+document.getElementById('bulkArchiveBtn').addEventListener('click', async () => {
+  if (selectedForAction.size === 0) return;
+  await fetch('/api/grants/archive', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: Array.from(selectedForAction), archived: true }),
+  });
+  await exitEditModeAndReload();
+});
+
+document.getElementById('bulkDeleteBtn').addEventListener('click', async () => {
+  if (selectedForAction.size === 0) return;
+  if (!confirm(`Permanently delete ${selectedForAction.size} grant(s)? This can't be undone.`)) return;
+  await fetch('/api/grants/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: Array.from(selectedForAction) }),
+  });
+  await exitEditModeAndReload();
+});
+
+async function restoreGrant(id) {
+  await fetch('/api/grants/archive', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: [id], archived: false }),
+  });
+  await loadGrantsList();
+}
+
+document.getElementById('archiveToggle').addEventListener('click', () => {
+  archiveExpanded = !archiveExpanded;
+  document.getElementById('archiveListBody').style.display = archiveExpanded ? '' : 'none';
+  document.getElementById('archiveToggle').classList.toggle('open', archiveExpanded);
+});
+
+async function selectGrant(id) {
+  selectedGrantId = id;
+  qaHistory = [];
+  document.getElementById('askPanel').style.display = 'none';
+  document.getElementById('askToggleBtn').classList.remove('open');
+  document.querySelectorAll('.grant-item').forEach((el) => el.classList.toggle('selected', el.dataset.id === id));
+  const grant = grantsCache.find((g) => g.id === id);
+  if (!grant) return;
+  document.getElementById('grantViewerEmpty').style.display = 'none';
+  document.getElementById('grantViewerContent').style.display = 'flex';
+  document.getElementById('grantViewerTitle').textContent = grant.name;
+  document.getElementById('grantViewerSub').textContent = [grant.funder, grant.geography, grant.last_verified].filter(Boolean).join(' · ');
+  const mdContent = document.getElementById('grantMdContent');
+  mdContent.innerHTML = '<p class="status-text">Loading…</p>';
+  try {
+    const res = await fetch(`/api/grants/${encodeURIComponent(id)}/markdown`);
+    if (!res.ok) throw new Error('No markdown export found for this grant.');
+    const data = await res.json();
+    mdContent.innerHTML = renderMarkdown(data.markdown);
+  } catch (e) {
+    mdContent.innerHTML = `<p class="status-text err">${escapeHtml(e.message)}</p>`;
+  }
+  renderQaHistory();
+}
+
+document.getElementById('askToggleBtn').addEventListener('click', () => {
+  const open = document.getElementById('askPanel').style.display !== 'none';
+  document.getElementById('askPanel').style.display = open ? 'none' : 'flex';
+  document.getElementById('askToggleBtn').classList.toggle('open', !open);
+});
+document.getElementById('askCloseBtn').addEventListener('click', () => {
+  document.getElementById('askPanel').style.display = 'none';
+  document.getElementById('askToggleBtn').classList.remove('open');
+});
+document.querySelectorAll('.ask-suggestion').forEach((btn) => {
+  btn.addEventListener('click', () => { document.getElementById('askInput').value = btn.dataset.q; });
+});
+
+function renderQaHistory() {
+  const body = document.getElementById('askBody');
+  if (qaHistory.length === 0) {
+    body.innerHTML = `<div style="text-align:center; margin-top:28px;">
+      <p class="status-text" style="margin-bottom:14px;">Ask anything about this grant's document</p>
+      <div class="ask-suggestions">
+        <button class="ask-suggestion" data-q="What is the maximum funding amount?">What is the maximum funding amount?</button>
+        <button class="ask-suggestion" data-q="Who is eligible to apply?">Who is eligible to apply?</button>
+        <button class="ask-suggestion" data-q="What documents are required?">What documents are required?</button>
+      </div></div>`;
+    body.querySelectorAll('.ask-suggestion').forEach((btn) => btn.addEventListener('click', () => { document.getElementById('askInput').value = btn.dataset.q; }));
+    return;
+  }
+  body.innerHTML = qaHistory.map((qa) => `
+    <div class="qa-q">${escapeHtml(qa.q)}</div>
+    <div class="qa-a">${qa.a}</div>
+  `).join('');
+  body.scrollTop = body.scrollHeight;
+}
+
+async function sendGrantQuestion() {
+  const input = document.getElementById('askInput');
+  const q = input.value.trim();
+  if (!q || !selectedGrantId) return;
+  input.value = '';
+  qaHistory.push({ q, a: '<span class="status-text">Thinking…</span>' });
+  renderQaHistory();
+  try {
+    const res = await fetch(`/api/grants/${encodeURIComponent(selectedGrantId)}/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    qaHistory[qaHistory.length - 1].a = escapeHtml(data.answer);
+  } catch (e) {
+    qaHistory[qaHistory.length - 1].a = `<span class="status-text err">${escapeHtml(e.message)}</span>`;
+  }
+  renderQaHistory();
+}
+document.getElementById('askSendBtn').addEventListener('click', sendGrantQuestion);
+document.getElementById('askInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendGrantQuestion(); });
+document.getElementById('askInput').addEventListener('input', (e) => {
+  document.getElementById('askSendBtn').classList.toggle('ready', !!e.target.value.trim());
+});
+
+// ─── Find a Grant (project -> shortlist -> chat) ───
+let findConversationId = null;
+let findLastQueryText = ''; // the project description last submitted, used to rank
+                             // a grant's own categories by relevance in openGrantDocForCategory
+
+function renderFindResults(data) {
+  findConversationId = data.conversation_id;
+  const shortlistEl = document.getElementById('findShortlist');
+  shortlistEl.innerHTML = '';
+  data.shortlist.forEach((g) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px;';
+    row.innerHTML = `<span style="flex:1; min-width:0;">${escapeHtml(g.name)}</span><span class="status-text">${g.score.toFixed(2)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost btn-sm pressable';
+    btn.textContent = 'View document';
+    btn.addEventListener('click', async () => {
+      let full = grantsCache.find((x) => x.id === g.id);
+      if (!full) {
+        try {
+          const res = await fetch('/api/grants');
+          const listData = await res.json();
+          grantsCache = listData.grants || [];
+          full = grantsCache.find((x) => x.id === g.id);
+        } catch (e) { /* fall through -- openGrantDocForCategory handles a missing grant below */ }
+      }
+      if (full) openGrantDocForCategory(full);
+    });
+    row.appendChild(btn);
+    shortlistEl.appendChild(row);
+  });
+  document.getElementById('findSummary').textContent = data.summary;
+  document.getElementById('findResults').style.display = 'block';
+  document.getElementById('findChatPanel').style.display = 'block';
+}
+
+document.getElementById('grantDocModalClose').addEventListener('click', () => {
+  document.getElementById('grantDocModal').classList.remove('open');
+});
+
+// Opens the grant-document modal for a shortlisted grant, from Find a
+// Grant. First ranks the grant's own focus_areas by how well they match the
+// user's project description (via /relevant-categories) so the category
+// shown is the one they'd actually apply under -- not just whichever
+// category happens to be first in the grant's own list or first to locate
+// in the PDF, either of which can be an unrelated category for a grant that
+// funds many. Then tries each ranked candidate via /locate until one
+// resolves to an actual page. Falls back to page 1 (browsable, no
+// highlight) if none of them locate.
+async function openGrantDocForCategory(grant) {
+  const modal = document.getElementById('grantDocModal');
+  const body = document.getElementById('grantDocModalBody');
+  document.getElementById('grantDocModalTitle').textContent = grant.name;
+  document.getElementById('grantDocModalCategory').textContent = 'Looking up a matching category…';
+  body.innerHTML = '';
+  modal.classList.add('open');
+
+  let candidates = (grant.focus_areas && grant.focus_areas.length) ? grant.focus_areas.slice() : [grant.name];
+  if (findLastQueryText && grant.focus_areas && grant.focus_areas.length > 1) {
+    try {
+      const res = await fetch(`/api/grants/${encodeURIComponent(grant.id)}/relevant-categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: findLastQueryText, top_k: grant.focus_areas.length }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const ranked = (data.categories || []).map((c) => c.category);
+        if (ranked.length) candidates = ranked;
+      }
+    } catch (e) { /* fall back to the grant's own focus_areas order */ }
+  }
+  let found = null;
+  let hasSourceFile = false;
+  for (const category of candidates) {
+    try {
+      const res = await fetch(`/api/grants/${encodeURIComponent(grant.id)}/locate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: category }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      hasSourceFile = hasSourceFile || data.has_source_file;
+      if (data.located) { found = { category, data }; break; }
+    } catch (e) { /* try the next category */ }
+  }
+
+  if (!hasSourceFile) {
+    document.getElementById('grantDocModalCategory').textContent = 'No source document is on record for this grant.';
+    return;
+  }
+  if (found) {
+    document.getElementById('grantDocModalCategory').textContent = `Category: ${found.category}`;
+    renderGrantPageNav(body, grant.id, found.data.page, [{ text: found.category, sevKey: 'info' }]);
+  } else {
+    document.getElementById('grantDocModalCategory').textContent = `${candidates[0]} (exact page not pinpointed -- browse below)`;
+    renderGrantPageNav(body, grant.id, 1, []);
+  }
+}
+
+document.getElementById('findTextInput').addEventListener('input', (e) => {
+  document.getElementById('findAnalyzeTextBtn').disabled = !e.target.value.trim();
+});
+document.getElementById('findAnalyzeTextBtn').addEventListener('click', async () => {
+  const text = document.getElementById('findTextInput').value.trim();
+  if (!text) return;
+  findLastQueryText = text;
+  document.getElementById('findAnalyzeTextBtn').disabled = true;
+  document.getElementById('findTextStatus').textContent = 'Analyzing with your local model… this can take a minute.';
+  document.getElementById('findTextProgress').style.display = '';
+  document.getElementById('findResults').style.display = 'none';
+  document.getElementById('findChatPanel').style.display = 'none';
+  try {
+    const res = await fetch('/api/analyze-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderFindResults(data);
+    document.getElementById('findTextStatus').textContent = '';
+  } catch (e) {
+    document.getElementById('findTextStatus').textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('findAnalyzeTextBtn').disabled = false;
+    document.getElementById('findTextProgress').style.display = 'none';
+  }
+});
+document.getElementById('findChatBtn').addEventListener('click', sendFindChat);
+document.getElementById('findChatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendFindChat(); });
+async function sendFindChat() {
+  const input = document.getElementById('findChatInput');
+  const message = input.value.trim();
+  if (!message || !findConversationId) return;
+  const log = document.getElementById('findChatLog');
+  log.innerHTML += `<div style="align-self:flex-end; background:#1c2230; color:#fff; padding:9px 13px; border-radius:12px; max-width:80%;">${escapeHtml(message)}</div>`;
+  input.value = '';
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: findConversationId, message }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    log.innerHTML += `<div style="background:var(--muted); padding:9px 13px; border-radius:12px; max-width:90%;">${escapeHtml(data.summary)}</div>`;
+  } catch (e) {
+    log.innerHTML += `<div class="status-text err">Error: ${escapeHtml(e.message)}</div>`;
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+// ─── Vet Proposal ───
+let vetTab = 'fit';
+let selectedVetGrantId = null;
+
+document.getElementById('vetTabFit').addEventListener('click', () => switchVetTab('fit'));
+document.getElementById('vetTabCompleteness').addEventListener('click', () => switchVetTab('completeness'));
+function switchVetTab(tab) {
+  vetTab = tab;
+  document.getElementById('vetTabFit').classList.toggle('active', tab === 'fit');
+  document.getElementById('vetTabCompleteness').classList.toggle('active', tab === 'completeness');
+  document.getElementById('vetFitSetup').style.display = tab === 'fit' ? '' : 'none';
+  document.getElementById('vetCompletenessSetup').style.display = tab === 'completeness' ? '' : 'none';
+  document.getElementById('vetPageSub').textContent = tab === 'fit'
+    ? 'Select a grant to audit against, then upload your proposal draft.'
+    : 'Grant-agnostic: checks whether the proposal covers the concepts any reasonable funding proposal should.';
+}
+
+async function loadVetGrantSelector() {
+  await refreshGrantsCount();
+  const list = document.getElementById('vetGrantSelectList');
+  const selectable = activeGrants(); // outdated/archived grants aren't offered here
+  if (selectable.length === 0) {
+    list.innerHTML = '<p class="status-text">No active grants in the database yet -- add one via Upload Grant first.</p>';
+    return;
+  }
+  if (!selectedVetGrantId || !selectable.some((g) => g.id === selectedVetGrantId)) selectedVetGrantId = selectable[0].id;
+  list.innerHTML = '';
+  selectable.forEach((g) => {
+    const btn = document.createElement('button');
+    btn.className = 'grant-select-item' + (g.id === selectedVetGrantId ? ' selected' : '');
+    btn.innerHTML = `<span class="ic">${icon('filetext', 14)}</span><span class="name">${escapeHtml(g.name)}</span><span class="org">${escapeHtml(g.funder || '')}</span>`;
+    btn.addEventListener('click', () => { selectedVetGrantId = g.id; loadVetGrantSelector(); });
+    list.appendChild(btn);
+  });
+}
+
+function showVetSetupState(state) {
+  document.getElementById('vetSetupScroll').style.display = state === 'complete' ? 'none' : '';
+  document.getElementById('vetComplete').style.display = state === 'complete' ? 'flex' : 'none';
+  document.getElementById('vetBusy').style.display = state === 'busy' ? '' : 'none';
+  document.getElementById('vetSetupError').style.display = state === 'error' ? '' : 'none';
+}
+
+setupDropZone(document.getElementById('vetFitDrop'), document.getElementById('vetFitFileInput'), (f) => submitVetFit(f));
+setupDropZone(document.getElementById('vetCompDrop'), document.getElementById('vetCompFileInput'), (f) => submitVetCompleteness(f));
+
+async function submitVetFit(file) {
+  if (!selectedVetGrantId) { alert('Add a grant to the database first (Upload Grant).'); return; }
+  document.getElementById('vetBusyTitle').textContent = 'Auditing against the selected grant…';
+  showVetSetupState('busy');
+  const form = new FormData();
+  form.append('file', file);
+  form.append('grant_id', selectedVetGrantId);
+  try {
+    const res = await fetch('/api/proposals/vet-grant-fit', { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderVetFitResult(data);
+    showVetSetupState('complete');
+  } catch (e) {
+    document.getElementById('vetSetupErrorText').textContent = e.message;
+    showVetSetupState('error');
+  }
+}
+
+async function submitVetCompleteness(file) {
+  document.getElementById('vetBusyTitle').textContent = 'Checking completeness…';
+  showVetSetupState('busy');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/proposals/vet', { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderVetCompletenessResult(data);
+    showVetSetupState('complete');
+  } catch (e) {
+    document.getElementById('vetSetupErrorText').textContent = e.message;
+    showVetSetupState('error');
+  }
+}
+
+function severityIcon(sev) { return { critical: 'xcircle', warning: 'alerttriangle', info: 'info' }[sev]; }
+function severityLabel(sev) { return { critical: 'critical', warning: 'warning', info: 'unclear' }[sev]; }
+
+// Fully-met/present criteria are never rendered at all (not even a "resolved" card) --
+// only non-resolved items reach renderVetView, per explicit product decision.
+function computeMatch(evidence, fullText) {
+  if (!evidence) return null;
+  // Try the whole evidence string first -- our tightened extraction prompts
+  // now often produce a full, genuinely-verbatim sentence with a quoted
+  // phrase embedded in the middle (e.g. a proper name in quotes). Extracting
+  // just that quoted phrase and matching it alone can land on the WRONG
+  // occurrence if the same short phrase also appears elsewhere (e.g. a title
+  // repeating the proposal's own name in quotes) -- the fuller sentence match
+  // disambiguates correctly since it's the more specific string. Only fall
+  // back to the quoted-only snippet (e.g. for evidence with a citation-style
+  // lead-in like 'p.4, Organization section: "..."' that itself isn't in the
+  // source text) if the full string can't be located at all.
+  return findInText(fullText, evidence) || findInText(fullText, extractQuotedSnippet(evidence));
+}
+
+const isWs = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r';
+const bulletRe = /^[ \t]*([-*•●▪◦‣∙○]|\d+[.)]|\([a-zA-Z0-9]+\))\s+/;
+
+function looksHeadingLine(trimmed) {
+  if (!trimmed || trimmed.length > 80) return false;
+  if (/[.,;:]$/.test(trimmed)) return false;
+  const words = trimmed.split(/\s+/);
+  return trimmed === trimmed.toUpperCase() || words.length <= 10;
+}
+// A short, lowercase-starting line with no heading markers (no numbering, not
+// Title Case) is more likely the wrapped tail of the sentence/label above it
+// than a genuinely new heading -- e.g. a "Prepared For: ...\norganizers" line
+// break, where there's no terminal punctuation to signal the label actually
+// ended before the wrap.
+function looksLikeWrapContinuation(trimmed) {
+  return /^[a-z]/.test(trimmed) && trimmed.split(/\s+/).length <= 3;
+}
+
+function rowText(row) {
+  return (row || []).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+}
+function tailWords(str, n) {
+  const tokens = str.trim().split(/\s+/).filter(Boolean);
+  return tokens.slice(Math.max(0, tokens.length - n)).join(' ');
+}
+// Locates tables[tableIdx] inside text[cs,ce), returning its {tableStart,
+// tableEnd} as absolute offsets, or null if its header can't be found here.
+// The END is NOT found by matching the full last row: pdfplumber's flat text
+// extraction reads a table left-to-right per physical text LINE, so a row
+// with more than one multi-line cell has its cells' lines interleaved in the
+// source (cell A's line 1, cell B's line 1, cell A's line 2, ...) rather than
+// each cell's full text appearing contiguously. So we anchor the end on
+// whichever is more reliable: the next table's header (tables are usually
+// back-to-back), or failing that the trailing words of the last row's
+// longest cell, which by then is the only column still emitting text and so
+// appears contiguously and un-interleaved right before the table's true end.
+function placeTable(text, tables, tableIdx, cs, ce) {
+  const table = tables[tableIdx];
+  const header = rowText(table[0]);
+  if (!header) return null;
+  const headerMatch = findInText(text, header, cs, ce);
+  if (!headerMatch) return null;
+  const tableStart = headerMatch.index;
+  const searchFrom = headerMatch.index + headerMatch.length;
+
+  let end = null;
+  const nextTable = tables[tableIdx + 1];
+  if (nextTable) {
+    const nextHeader = rowText(nextTable[0]);
+    const nm = nextHeader ? findInText(text, nextHeader, searchFrom) : null;
+    if (nm) end = nm.index;
+  }
+  if (end === null) {
+    const lastRow = table[table.length - 1] || [];
+    const fullRowText = rowText(lastRow);
+    const fm = fullRowText ? findInText(text, fullRowText, searchFrom, ce + 2000) : null;
+    if (fm) {
+      end = fm.index + fm.length;
+    } else {
+      let longestCell = '';
+      lastRow.forEach((c) => { if (c && c.length > longestCell.length) longestCell = c; });
+      if (longestCell) {
+        const m = findInText(text, tailWords(longestCell, 6), searchFrom, ce + 2000);
+        if (m) end = m.index + m.length;
+      }
+    }
+  }
+  if (end === null) end = ce;
+  return { tableStart, tableEnd: Math.min(end, ce) };
+}
+
+// Classifies text[s,e) line by line into heading / bullet-item / paragraph
+// blocks, appending them to `blocks`. Consecutive non-heading, non-bullet
+// lines merge into one paragraph block (rejoining a PDF's word-wrapped visual
+// lines); consecutive lines under one bullet marker merge into one
+// bullet-item (so a wrapped bullet doesn't fragment into several rows).
+function classifyLines(text, s, e, blocks) {
+  const rawLines = text.slice(s, e).split('\n');
+  let lineStart = s;
+  const lines = rawLines.map((raw) => {
+    const lineEnd = lineStart + raw.length;
+    const info = { raw, start: lineStart, end: lineEnd };
+    lineStart = lineEnd + 1;
+    return info;
+  });
+
+  let i = 0;
+  let paraStart = null, paraEnd = null;
+  const flushPara = () => {
+    if (paraStart !== null) {
+      blocks.push({ type: 'paragraph', start: paraStart, end: paraEnd });
+      paraStart = null;
+    }
+  };
+
+  while (i < lines.length) {
+    const l = lines[i];
+    const trimmed = l.raw.trim();
+    if (!trimmed) { i++; continue; }
+
+    if (looksHeadingLine(trimmed) && !(paraStart !== null && looksLikeWrapContinuation(trimmed))) {
+      flushPara();
+      let hs = l.start, he = l.end;
+      while (hs < he && isWs(text[hs])) hs++;
+      while (he > hs && isWs(text[he - 1])) he--;
+      blocks.push({ type: 'heading', start: hs, end: he });
+      i++;
+      continue;
+    }
+
+    if (bulletRe.test(l.raw)) {
+      flushPara();
+      const marker = l.raw.match(bulletRe);
+      let itemStart = l.start + marker[0].length;
+      let itemEnd = l.end;
+      i++;
+      while (i < lines.length) {
+        const nxt = lines[i];
+        const nt = nxt.raw.trim();
+        if (!nt || bulletRe.test(nxt.raw) || looksHeadingLine(nt)) break;
+        itemEnd = nxt.end;
+        i++;
+      }
+      while (itemStart < itemEnd && isWs(text[itemStart])) itemStart++;
+      while (itemEnd > itemStart && isWs(text[itemEnd - 1])) itemEnd--;
+      if (itemStart < itemEnd) blocks.push({ type: 'bullet-item', start: itemStart, end: itemEnd, marker: '•' });
+      continue;
+    }
+
+    if (paraStart === null) paraStart = l.start;
+    paraEnd = l.end;
+    i++;
+  }
+  flushPara();
+}
+
+// Segments a flat extracted-PDF text string into display blocks (heading /
+// paragraph / bullet-item / table) WITHOUT reconstructing or normalizing the
+// text -- every block's [start,end) is a literal slice of `text`, so any
+// absolute character offset found via findInText() against the same `text`
+// continues to land in exactly the right place inside whichever block
+// contains it. `tables` is pdf_extract's raw per-table list-of-rows-of-cells
+// (already parsed by pdfplumber); consumed strictly in document order so a
+// table's repeated header row (common across a page break) resolves to the
+// right occurrence. There's no PDF font/layout metadata available here (see
+// pdf_extract.py), so classification is a best-effort heuristic, not exact.
+function segmentBlocks(text, tables) {
+  tables = tables || [];
+  const blocks = [];
+  const sepRe = /\n[ \t]*\n+/g;
+  const chunkRanges = [];
+  let last = 0, m;
+  while ((m = sepRe.exec(text))) {
+    chunkRanges.push([last, m.index]);
+    last = m.index + m[0].length;
+  }
+  chunkRanges.push([last, text.length]);
+
+  let tableIdx = 0;
+
+  chunkRanges.forEach(([cs0, ce0]) => {
+    let cs = cs0, ce = ce0;
+    while (cs < ce && isWs(text[cs])) cs++;
+    while (ce > cs && isWs(text[ce - 1])) ce--;
+    if (cs >= ce) return; // blank-only chunk (a separator run) -- nothing to render
+
+    let pos = cs;
+    while (pos < ce) {
+      const placed = tableIdx < tables.length ? placeTable(text, tables, tableIdx, pos, ce) : null;
+      if (placed) {
+        if (placed.tableStart > pos) classifyLines(text, pos, placed.tableStart, blocks);
+        blocks.push({ type: 'table', start: placed.tableStart, end: placed.tableEnd, tableIndex: tableIdx });
+        tableIdx++;
+        pos = placed.tableEnd;
+        continue;
+      }
+      classifyLines(text, pos, ce, blocks);
+      pos = ce;
+    }
+  });
+
+  return blocks;
+}
+
+function cellTokens(s) {
+  return new Set((s || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+}
+// Table cells interleave line-by-line in the flat extracted text (see
+// placeTable's comment above), so a match's flat-text offset can straddle
+// several cells and doesn't reliably identify which ONE cell it came from.
+// Instead, match at the row level directly against the table's own
+// (cleanly-separated) cell strings: whichever data row shares the most
+// distinct words with the evidence snippet, if it clears a minimum overlap.
+function findBestTableRow(table, snippet) {
+  const evTokens = cellTokens(snippet);
+  if (evTokens.size === 0) return -1;
+  let best = -1, bestScore = 0;
+  for (let r = 1; r < table.length; r++) {
+    const rowTokens = cellTokens(rowText(table[r]));
+    if (rowTokens.size === 0) continue;
+    let hits = 0;
+    evTokens.forEach((t) => { if (rowTokens.has(t)) hits++; });
+    const score = hits / evTokens.size;
+    if (score > bestScore) { bestScore = score; best = r; }
+  }
+  return bestScore >= 0.5 ? best : -1;
+}
+
+// Renders the shared vet-proposal result view: a "Needs attention" list for
+// criteria that can't be pinpointed to a spot in the text (no evidence, no
+// locatable match, overlaps an earlier match, or straddles a block
+// boundary), plus the full proposal text as an editable, structured,
+// highlight-annotated document. `items`: [{ title, sevKey, suggestion,
+// evidence, rewriteEligible }]. `tables` is pdf_extract's raw per-table
+// list-of-rows-of-cells, so real tables in the source PDF render as actual
+// tables here, with a matching row highlighted (not a single cell/span --
+// see findBestTableRow above) when a criterion's evidence points into one.
+function renderVetView(items, fullText, tables) {
+  const attnEl = document.getElementById('vetNeedsAttention');
+  const docEl = document.getElementById('vetDocText');
+  attnEl.innerHTML = '';
+  docEl.innerHTML = '';
+  closeClausePanel();
+
+  const blocks = segmentBlocks(fullText, tables);
+
+  const withMatch = items.map((item) => ({ item, match: computeMatch(item.evidence, fullText) }));
+  const located = withMatch.filter((x) => x.match).sort((a, b) => a.match.index - b.match.index);
+  const unanchored = withMatch.filter((x) => !x.match).map((x) => x.item);
+
+  const nonOverlapping = [];
+  let cursor = 0;
+  located.forEach((x) => {
+    if (x.match.index >= cursor) {
+      nonOverlapping.push(x);
+      cursor = x.match.index + x.match.length;
+    } else {
+      unanchored.push(x.item);
+    }
+  });
+
+  // A match only anchors if it fits entirely inside one block -- one that
+  // straddles a heading/paragraph/bullet boundary has nowhere valid to
+  // render an inline highlight, same as the pre-existing overlap fallback.
+  // Table blocks are rendered as real <table> elements and highlighted at
+  // the row level (findBestTableRow) rather than via inline <mark>.
+  const byBlock = new Map();
+  const tableRowHits = new Map(); // block -> Map(rowIndex -> {item, match})
+  nonOverlapping.forEach(({ item, match }) => {
+    const block = blocks.find((b) => match.index >= b.start && match.index + match.length <= b.end);
+    if (!block) { unanchored.push(item); return; }
+    if (block.type === 'table') {
+      const table = (tables && tables[block.tableIndex]) || [];
+      const snippet = extractQuotedSnippet(item.evidence) || item.evidence;
+      const rowIdx = findBestTableRow(table, snippet);
+      if (rowIdx === -1) { unanchored.push(item); return; }
+      if (!tableRowHits.has(block)) tableRowHits.set(block, new Map());
+      tableRowHits.get(block).set(rowIdx, { item, match });
+      return;
+    }
+    if (!byBlock.has(block)) byBlock.set(block, []);
+    byBlock.get(block).push({ item, match });
+  });
+
+  if (unanchored.length > 0) {
+    const heading = document.createElement('div');
+    heading.innerHTML = '<h3 style="margin:0 0 4px; font-size:14px;">Needs attention</h3><p class="status-text" style="margin:0 0 14px;">These couldn\'t be pinpointed to a specific spot in the text below.</p>';
+    attnEl.appendChild(heading);
+    unanchored.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'attn-card sev-' + item.sevKey;
+      if (item.evidence || item.grantId) { card.style.cursor = 'pointer'; card.classList.add('pressable'); }
+      card.innerHTML = `
+        <div class="crit-icon" style="width:26px; height:26px;">${icon(severityIcon(item.sevKey), 13)}</div>
+        <div class="attn-card-body">
+          <div class="attn-card-title"><span class="crit-tag">${severityLabel(item.sevKey)}</span><span class="crit-title">${escapeHtml(item.title)}</span></div>
+          <p class="attn-card-sugg">${escapeHtml(item.suggestion || 'No suggestion provided.')}</p>
+        </div>`;
+      if (item.evidence) {
+        card.addEventListener('click', () => openClauseModal({ title: item.title, suggestion: item.suggestion, evidence: item.evidence, fullText, rewriteEligible: item.rewriteEligible, sevKey: item.sevKey }, card));
+      } else if (item.grantId) {
+        // No proposal-side evidence to show (e.g. a not_met criterion the
+        // proposal never addresses) -- the useful thing to show instead is
+        // where the requirement itself came from in the grant's document.
+        card.addEventListener('click', () => openGrantSource(item, card));
+      }
+      attnEl.appendChild(card);
+    });
+  }
+
+  if (blocks.length === 0) {
+    docEl.textContent = fullText;
+    return;
+  }
+
+  // Fills `container` with text/<mark> nodes for `fullText.slice(base, base+text.length)`,
+  // given block-local matches already sorted by position.
+  function fillWithMarks(container, text, base, blockMatches) {
+    let pos = 0;
+    blockMatches.forEach(({ item, match }) => {
+      const li = match.index - base;
+      const ll = match.length;
+      container.appendChild(document.createTextNode(text.slice(pos, li)));
+      const mark = document.createElement('mark');
+      mark.className = 'sev-' + item.sevKey;
+      mark.textContent = text.slice(li, li + ll);
+      mark.addEventListener('click', () => openClauseModal({ title: item.title, suggestion: item.suggestion, evidence: item.evidence, fullText, rewriteEligible: item.rewriteEligible, sevKey: item.sevKey }, mark));
+      container.appendChild(mark);
+      pos = li + ll;
+    });
+    container.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  let lastBulletList = null;
+  blocks.forEach((block) => {
+    const matches = (byBlock.get(block) || []).sort((a, b) => a.match.index - b.match.index);
+    const blockText = fullText.slice(block.start, block.end);
+
+    if (block.type === 'table') {
+      lastBulletList = null;
+      const rows = (tables && tables[block.tableIndex]) || [];
+      if (rows.length === 0) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'doc-table-wrap';
+      const table = document.createElement('table');
+      table.className = 'doc-table';
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      (rows[0] || []).forEach((cell) => {
+        const th = document.createElement('th');
+        th.textContent = cell || '';
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      const rowHits = tableRowHits.get(block);
+      rows.slice(1).forEach((row, i) => {
+        const tr = document.createElement('tr');
+        row.forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = cell || '';
+          tr.appendChild(td);
+        });
+        const hit = rowHits && rowHits.get(i + 1);
+        if (hit) {
+          tr.className = 'doc-table-row-hit sev-' + hit.item.sevKey;
+          tr.addEventListener('click', () => openClauseModal({
+            title: hit.item.title, suggestion: hit.item.suggestion, evidence: hit.item.evidence,
+            fullText, rewriteEligible: hit.item.rewriteEligible, sevKey: hit.item.sevKey,
+          }, tr));
+        }
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      docEl.appendChild(wrap);
+      return;
+    }
+
+    if (block.type === 'bullet-item') {
+      if (!lastBulletList) {
+        lastBulletList = document.createElement('div');
+        lastBulletList.className = 'bullet-list';
+        docEl.appendChild(lastBulletList);
+      }
+      const row = document.createElement('div');
+      row.className = 'bullet-row';
+      if (block.marker) row.innerHTML = '<span class="bullet-dot">●</span>';
+      const content = document.createElement('span');
+      fillWithMarks(content, blockText, block.start, matches);
+      row.appendChild(content);
+      lastBulletList.appendChild(row);
+      return;
+    }
+
+    lastBulletList = null;
+    const el = document.createElement(block.type === 'heading' ? 'h3' : 'p');
+    fillWithMarks(el, blockText, block.start, matches);
+    docEl.appendChild(el);
+  });
+}
+
+function updateCounts(counts, labels) {
+  const countsEl = document.getElementById('vetCounts');
+  countsEl.innerHTML = '';
+  if (counts.critical) countsEl.innerHTML += `<span><span class="count-dot" style="background:#EF4444;"></span>${counts.critical} ${labels.critical}</span>`;
+  if (counts.warning) countsEl.innerHTML += `<span><span class="count-dot" style="background:#F59E0B;"></span>${counts.warning} ${labels.warning}</span>`;
+  const alertCount = counts.critical + counts.warning;
+  const badge = document.getElementById('vetCountBadge');
+  if (alertCount > 0) { badge.style.display = ''; badge.textContent = alertCount; } else { badge.style.display = 'none'; }
+}
+
+function renderVetFitResult(data) {
+  document.getElementById('vetAuditedGrantName').textContent = data.grant.name;
+  const sevMap = { not_met: 'critical', partial: 'warning', unclear: 'info', met: 'resolved' };
+  const counts = { critical: 0, warning: 0 };
+  const items = [];
+  data.criteria.forEach((c) => {
+    const sevKey = sevMap[c.status] || 'info';
+    if (sevKey === 'resolved') return; // met criteria are removed entirely, not shown
+    if (counts[sevKey] !== undefined) counts[sevKey]++;
+    items.push({ title: c.criterion, sevKey, suggestion: c.suggestion, evidence: c.evidence, rewriteEligible: c.status === 'partial', grantId: data.grant.id });
+  });
+  renderVetView(items, data.full_text || '', data.tables || []);
+  if (data.note) {
+    const note = document.createElement('p');
+    note.className = 'status-text';
+    note.style.marginBottom = '14px';
+    note.textContent = data.note;
+    document.getElementById('vetNeedsAttention').prepend(note);
+  }
+  updateCounts(counts, { critical: 'critical', warning: 'warnings' });
+  loadCategoryPanel(data.full_text || '');
+}
+
+// Fetched once per vetted document (not recomputed on keystroke) -- the top
+// grants-db focus_areas categories this proposal text most correlates with.
+async function loadCategoryPanel(fullText) {
+  const panel = document.getElementById('categoryPanel');
+  const list = document.getElementById('categoryList');
+  panel.style.display = 'none';
+  if (!fullText.trim()) return;
+  try {
+    const res = await fetch('/api/categories/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: fullText, top_k: 3 }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const categories = data.categories || [];
+    if (categories.length === 0) return;
+    const maxScore = Math.max(...categories.map((c) => c.score), 1e-9);
+    list.innerHTML = categories.map((c) => `
+      <div class="category-item">
+        <div class="cat-name">${escapeHtml(c.category)}</div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.max(4, (c.score / maxScore) * 100)}%;"></div></div>
+      </div>`).join('');
+    panel.style.display = '';
+  } catch (e) {
+    // Best-effort only -- category correlation is a supplementary signal, not
+    // required for the audit itself, so a failed fetch just leaves it hidden.
+  }
+}
+
+function renderVetCompletenessResult(data) {
+  document.getElementById('vetAuditedGrantName').textContent = 'Completeness rubric (grant-agnostic)';
+  const sevMap = { missing: 'critical', weak: 'warning', present: 'resolved' };
+  const counts = { critical: 0, warning: 0 };
+  const items = [];
+  data.criteria.forEach((c) => {
+    const sevKey = sevMap[c.status] || 'info';
+    if (sevKey === 'resolved') return; // present criteria are removed entirely, not shown
+    if (counts[sevKey] !== undefined) counts[sevKey]++;
+    items.push({ title: c.label, sevKey, suggestion: c.suggestion, evidence: c.evidence, rewriteEligible: c.status === 'weak' });
+  });
+  renderVetView(items, data.full_text || '', data.tables || []);
+  updateCounts(counts, { critical: 'missing', warning: 'weak' });
+  loadCategoryPanel(data.full_text || '');
+}
+
+document.getElementById('vetReuploadBtn').addEventListener('click', () => showVetSetupState('idle'));
+
+document.getElementById('vetSavePdfBtn').addEventListener('click', () => window.print());
+
+document.getElementById('vetSaveWordBtn').addEventListener('click', () => {
+  // A .doc file is just HTML wrapped in Word-recognized namespaces -- Word
+  // opens and re-edits it natively, no docx/zip-building library needed.
+  const bodyHtml = document.getElementById('vetDocText').innerHTML;
+  const doc = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset="utf-8"><title>Proposal</title></head>
+<body style="font-family:Calibri,Arial,sans-serif; font-size:11pt;">${bodyHtml}</body></html>`;
+  const blob = new Blob(['﻿', doc], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'proposal-edited.doc';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('vetDownloadBtn').addEventListener('click', () => {
+  const text = document.getElementById('vetDocText').innerText;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'proposal-edited.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ─── Launch modal: grants/ inbox PDFs pending conversion ───
+const launchModal = document.getElementById('launchModal');
+const launchModalBody = document.getElementById('launchModalBody');
+
+function renderLaunchPrompt(pending) {
+  launchModalBody.innerHTML = `
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+      <div style="width:48px; height:48px; border-radius:16px; background:linear-gradient(135deg,#EEF2FF,#E0E7FF); display:flex; align-items:center; justify-content:center; color:#6366F1;">${icon('folder', 22)}</div>
+      <div>
+        <p style="font-size:16px; font-weight:900; margin:0;">Grant PDFs detected</p>
+        <p style="font-size:11px; color:var(--muted-foreground); margin:2px 0 0;">Found ${pending.length} unconverted file${pending.length === 1 ? '' : 's'} in the grants/ folder</p>
+      </div>
+    </div>
+    <div style="background:var(--muted); border-radius:16px; padding:12px 14px; margin-bottom:18px; display:flex; flex-direction:column; gap:8px;">
+      ${pending.map((name) => `<div class="launch-file-row"><div class="launch-file-icon">${icon('filetext', 13)}</div><span style="font-size:12px; font-weight:500; flex:1;">${escapeHtml(name)}</span></div>`).join('')}
+    </div>
+    <p style="font-size:12px; color:var(--muted-foreground); margin-bottom:20px; line-height:1.65;">Convert these to the grants database + page-cited markdown exports? Already-converted grants won't be reprocessed.</p>
+    <div id="launchProgressWrap" style="display:none; margin-bottom:18px;">
+      <div class="progress-track"><div class="progress-fill" id="launchProgressFill" style="width:0%;"></div></div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-ghost" id="launchSkipBtn" style="flex:1; justify-content:center;">Skip for now</button>
+      <button class="btn btn-primary" id="launchConvertBtn" style="flex:1; justify-content:center;">Convert to markdown</button>
+    </div>`;
+  document.getElementById('launchSkipBtn').addEventListener('click', () => launchModal.classList.remove('open'));
+  document.getElementById('launchConvertBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('launchConvertBtn');
+    btn.disabled = true; btn.textContent = 'Converting…';
+    document.getElementById('launchProgressWrap').style.display = '';
+    document.getElementById('launchProgressFill').style.width = '60%';
+    try {
+      const res = await fetch('/api/grants/convert-pending', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('launchProgressFill').style.width = '100%';
+      renderLaunchDone(data);
+      refreshGrantsCount();
+    } catch (e) {
+      launchModalBody.innerHTML = `<p class="status-text err">Error converting: ${escapeHtml(e.message)}</p>`;
+    }
+  });
+}
+
+function renderLaunchDone(data) {
+  const names = (data.converted || []).map((c) => c.grant.name);
+  const failed = data.failed || [];
+  launchModalBody.innerHTML = `
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
+      <div style="width:48px; height:48px; border-radius:16px; background:#DCFCE7; display:flex; align-items:center; justify-content:center; color:#16A34A;">${icon('checkcircle', 24)}</div>
+      <div>
+        <p style="font-size:16px; font-weight:900; margin:0;">Conversion complete</p>
+        <p style="font-size:11px; color:var(--muted-foreground); margin:2px 0 0;">${names.length} file${names.length === 1 ? '' : 's'} saved to the grants database</p>
+      </div>
+    </div>
+    <div style="background:#F0FDF4; border-radius:16px; padding:12px 14px; margin-bottom:16px;">
+      ${names.map((n) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">${icon('checkcircle', 12)}<span style="font-size:12px; color:#15803D; font-weight:500;">${escapeHtml(n)}</span></div>`).join('') || '<span style="font-size:12px; color:var(--muted-foreground);">Nothing to convert.</span>'}
+    </div>
+    ${failed.length ? `<div style="background:#FFF1F1; border-radius:16px; padding:12px 14px; margin-bottom:16px;">${failed.map((f) => `<div style="font-size:12px; color:#DC2626;">${escapeHtml(f.filename)}: ${escapeHtml(f.error)}</div>`).join('')}</div>` : ''}
+    <button class="btn btn-primary" id="launchOpenBtn" style="width:100%; justify-content:center;">Open Grant Advisor →</button>`;
+  document.getElementById('launchOpenBtn').addEventListener('click', () => launchModal.classList.remove('open'));
+}
+
+async function checkLaunchPrompt() {
+  try {
+    const res = await fetch('/api/grants/pending');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.pending && data.pending.length > 0) {
+      renderLaunchPrompt(data.pending);
+      launchModal.classList.add('open');
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
+// ─── Init ───
+setView('view-grants');
+checkLaunchPrompt();
+</script>
+</body>
+</html>

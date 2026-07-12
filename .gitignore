@@ -1,0 +1,46 @@
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# --- Runtime state (never commit user data) ---
+# The live grants database and its caches are runtime state, not source.
+# The app recreates an empty database on first run (grants_matcher._load_payload).
+grants_db/grants.json
+grants_db/*.bak
+grants_db/.embed_cache.json
+grants_db/.category_embed_cache.json
+
+# Uploaded proposals/grants and generated reports (contain user documents).
+data/
+
+# Ingested grant PDFs and their generated markdown/raw-text companions.
+grants/converted/
+grants/markdown/
+grants/*.pdf
+
+# --- Local report / write-up (not part of the shipped project) ---
+report.tex
+report.pdf
+report.aux
+report.log
+report.out
+*.synctex.gz
+
+# --- Internal notes / design docs (not needed to run the tool) ---
+CLAUDE.md
+context.md
+memory.md
+narration_script.md
+WALKTHROUGH.md
+architecture.excalidraw
+Grant Advisor_UI/
