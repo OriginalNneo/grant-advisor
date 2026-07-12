@@ -7,7 +7,7 @@ written proposal against a funder's requirements. Everything runs on your own ma
 [Ollama](https://ollama.com). There is no cloud API, no account, no telemetry, and no network call
 that leaves your computer. Your proposals and grant documents never go anywhere.
 
-> Demo video: https://youtu.be/44-u2L9U4KY
+> Demo video: https://youtu.be/jB_Me6go-6o
 
 ---
 
